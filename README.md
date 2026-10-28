@@ -24,6 +24,26 @@ en el deploy. Si el sitio se caía, el proyecto se perdía.
   0 `iframe`. No hace ninguna petición de red. Funciona sin internet.
 - No hay build, ni `package.json`, ni módulos. No hay que instalar nada.
 
+## Limpieza aplicada
+
+El HTML original traía, inyectado por Cloudflare, un script de detección de bots: un
+`iframe` oculto de 1×1 que cargaba `/cdn-cgi/challenge-platform/scripts/jsd/main.js`.
+No es parte de la aplicación, no funciona fuera del dominio original y generaba un 404
+en cada carga. Fue eliminado (commit posterior al tag de captura, que conserva el
+archivo tal cual se bajó).
+
+Resultado: `index.html` queda realmente autocontenido.
+
+## Verificación
+
+| Prueba | Resultado |
+|---|---|
+| Carga desde servidor local | OK, sin errores de consola |
+| Peticiones de red | 0 |
+| Codificación | UTF-8 correcta (♠ ⚙ × —) |
+| Botón "Ejemplo" | Carga mesa: crupier K-10, mano 10-6, 3 jugadores |
+| Cálculo | Responde **PLANTARSE — 21,3%** |
+
 ## Cómo correrlo
 
 Abrir `index.html` en el navegador, o servirlo en local:
