@@ -1,0 +1,40 @@
+name: Publicar en GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v5
+
+      # Cambiar esta ruta para publicar otra version:
+      #   v1.7m-staging   -> V1.7M con OCR (staging)
+      #   v1.5.2-publicada -> V1.5.2 (la que esta hoy online)
+      - name: Subir artefacto
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: v1.7m-staging
+
+      - name: Desplegar
+        id: deployment
+        uses: actions/deploy-pages@v4
