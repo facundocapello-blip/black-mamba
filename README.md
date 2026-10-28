@@ -6,6 +6,16 @@ Blackjack para iPhone.
 Existe porque el código nunca estuvo en un repositorio: vivía en el deploy de
 `chatgpt.site` y en ZIPs sueltos. Si el sitio se caía, el proyecto se perdía.
 
+## Publicación
+
+**https://facundocapello-blip.github.io/black-mamba/**
+
+Repo: https://github.com/facundocapello-blip/black-mamba
+
+Se publica con GitHub Actions (`.github/workflows/pages.yml`), que toma la carpeta
+indicada en `path`. Hoy apunta a `v1.7m-staging`. Para volver a la V1.5.2, cambiar
+esa línea a `v1.5.2-publicada` y pushear.
+
 ## Versiones
 
 | Carpeta | Versión | Origen | Estado |
