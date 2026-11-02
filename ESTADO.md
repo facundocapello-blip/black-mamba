@@ -15,3 +15,6 @@ Actualizado: 2026-10-28
 - Para volver a V1.5.2 hay que cambiar el `path` del workflow: no mover carpetas sin
   actualizarlo o el sitio publica vacío.
 - El OCR usa Tesseract.js desde CDN: sin internet no lee cartas (el resto sí funciona).
+
+## Verificar
+- `powershell -NoProfile -File qa/smoke.ps1` — HTTP 200, título, tamaño y que Tesseract siga referenciado.
