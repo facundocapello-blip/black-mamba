@@ -1160,6 +1160,8 @@ setupControls();render();runCalculation();
   refreshCrops();window.BMMMobile?.clear();
   if(ratio<1.1){status('Captura vertical cargada. Tocá «Ajustar posiciones» para señalar los tres símbolos antes de reconocer.');}
   else{status('Captura cargada. Revisá los recortes ampliados; si muestran una letra o número, tocá «Reconocer cartas».');}
+  // Auto-read landscape screenshots after rendering the preview. Manual review remains mandatory.
+  if(ratio>=1.1 && !calibrating){const expected=imageSerial;setTimeout(()=>{if(expected===imageSerial&&!busy&&img.naturalWidth)recognize();},120);}
  });
  $('bmmRecognize').addEventListener('click',recognize);
  $('bmmRemovePhoto').addEventListener('click',reset);
