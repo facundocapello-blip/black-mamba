@@ -1,14 +1,13 @@
 # ESTADO — BLACK MAMBA
 
-Actualizado: 2026-11-02
+Actualizado: 2026-11-04
 
 ## Publicado
 - `https://facundocapello-blip.github.io/black-mamba/` — GitHub Actions publica `v1.7m-staging`; 200 y consola sin errores (verificado 02/11).
 - Etiqueta visible: **V1.6M · STAGING** (motor V1.6M + capa OCR V1.7M integrada).
-- Publicado: `origin/main` `f1f5f44` («Activar reconocimiento automático al cargar captura horizontal»).
+- Publicado: `origin/main` `22a4f21` (docs + smoke test encima de `f1f5f44`; sin cambios de producto).
 
 ## Abierto
-- **Local y remoto divergieron**: `main` local `d816bee` está 1 adelante y 2 atrás de `origin/main`. Reconciliar antes de tocar nada.
 - Probar el OCR con capturas reales de Betano (hoy solo con el ejemplo).
 - Decidir si V1.7M pasa a ser la versión estable y V1.5.2 queda archivada.
 
