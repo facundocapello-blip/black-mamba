@@ -421,10 +421,42 @@
 .bmm-calibrating .bmm-stage{cursor:crosshair;outline:2px solid #ffd88c}
 .bmm-calibrating #bmmCalibrationHelp{color:#ffe2a8}
 @media(max-width:720px){.bmm-crop canvas{width:75px;height:75px}.bmm-crop span{font-size:9px}.bmm-ocr-primary{min-width:130px}}
+
+/* Modo PC compacto: carga manual junto a Betano, sin scroll. */
+.bmpc{position:fixed;inset:0;z-index:10001;background:#07111b;color:#eefcf7;display:none;flex-direction:column;overflow:hidden}
+.bmpc.open{display:flex}
+.bmpc *{box-sizing:border-box}
+.bmpc-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;background:#102634;border-bottom:1px solid #315c59}
+.bmpc-head strong{font-size:15px;letter-spacing:.03em}
+.bmpc-head small{display:block;color:#a8c6c4;font-size:10px;margin-top:1px}
+.bmpc-close{min-height:40px;min-width:96px;background:#213e4d;border:1px solid #45716e;border-radius:10px;color:#fff;font-size:13px;font-weight:700}
+.bmpc-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:10px 12px;overflow:hidden}
+.bmpc-coach{flex:none;border:1px solid #2f6d5a;border-radius:12px;background:linear-gradient(120deg,#113a2d,#0d2029);padding:8px 11px}
+.bmpc-coach-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.bmpc-coach-top strong{font-size:23px;line-height:1.1;color:#fff;letter-spacing:.01em}
+.bmpc-flag{font-size:9px;font-weight:800;letter-spacing:.08em;color:#9fe8c9;border:1px solid #3f8d72;border-radius:999px;padding:3px 7px;white-space:nowrap}
+.bmpc-metrics{display:flex;gap:14px;margin-top:5px;font-size:10px;color:#a9d5c8}
+.bmpc-metrics b{font-size:15px;color:#eafff6}
+.bmpc-slots{flex:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.bmpc-slot{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;min-height:58px;justify-content:center;border:1px solid #3d6b64;border-radius:11px;background:#0f2833;color:#cfe9e2;padding:5px 3px}
+.bmpc-slot span{font-size:9px;letter-spacing:.04em;color:#9dc2b9;white-space:nowrap}
+.bmpc-slot strong{font-size:21px;line-height:1.1;color:#fff}
+.bmpc-slot[data-filled="true"]{border-color:#48c69c;background:#134034}
+.bmpc-slot[data-filled="true"] span{color:#a8f0d3}
+.bmpc-slot[hidden]{display:none}
+.bmpc-hint{flex:none;font-size:11px;color:#a8d9ce;min-height:15px;line-height:1.3}
+.bmpc-ranks{flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:minmax(48px,1fr);gap:7px}
+.bmpc-rank{min-width:0;border:1px solid #487a75;border-radius:12px;background:#21434d;color:#fff;font-weight:800;font-size:24px;touch-action:manipulation}
+.bmpc-rank:active{transform:scale(.97)}
+.bmpc-rank:disabled{opacity:.35}
+.bmpc-rank:focus-visible{outline:2px solid #7cf8c9;outline-offset:2px}
+.bmpc-foot{flex:none;display:flex;gap:8px;padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));background:#102634;border-top:1px solid #315c59}
+.bmpc-foot button{flex:1;min-height:46px;border-radius:11px;font-size:14px;font-weight:800;border:1px solid #427f73;background:#24483f;color:#e4fff3}
+@media(prefers-reduced-motion:reduce){.bmpc-rank:active{transform:none}}
 </style></head>
 <body><div class="app"><header class="top">
   <div class="brand"><div class="logo" aria-hidden="true">♠</div><div><h1>BLACK <span class="brand-accent">MAMBA</span></h1><p>Blackjack Analyzer · V1.6M · STAGING</p></div></div>
-  <div class="top-actions"><button class="btn bmm-launch" id="bmmLaunch" type="button">📱 Rápido</button><span class="pill"><i class="dot"></i> Cálculo local · OCR requiere Internet</span><button class="btn" id="exampleBtn" title="Cargar una partida de ejemplo">Ejemplo</button><button class="btn strong" id="settingsBtn" aria-label="Abrir configuración">⚙ Ajustes</button></div>
+  <div class="top-actions"><button class="btn bmm-launch" id="bmmPcToggle" type="button" title="Modo PC junto a Betano">🖥 PC</button><button class="btn bmm-launch" id="bmmLaunch" type="button">📱 Rápido</button><span class="pill"><i class="dot"></i> Cálculo local · OCR requiere Internet</span><button class="btn" id="exampleBtn" title="Cargar una partida de ejemplo">Ejemplo</button><button class="btn strong" id="settingsBtn" aria-label="Abrir configuración">⚙ Ajustes</button></div>
 </header>
 <section class="mamba-hero" aria-label="Asistente BLACK MAMBA">
   <div class="avatar-well"><div class="avatar-glow" aria-hidden="true"></div><div class="avatar-sprite" id="avatarSprite" role="img" aria-label="Avatar animado de BLACK MAMBA"></div></div>
@@ -971,6 +1003,25 @@ setupControls();render();runCalculation();
  <footer class="bmm-foot"><button id="bmmCancel" type="button">Volver</button><button class="bmm-apply" id="bmmApply" type="button" disabled>✓ Confirmar y analizar</button></footer>
 </section>
 
+<section class="bmpc" id="bmmPc" role="dialog" aria-modal="true" aria-label="Modo PC compacto">
+ <header class="bmpc-head"><div><strong>♠ BLACK MAMBA · PC</strong><small>Carga rápida junto a Betano · sin scroll</small></div><button type="button" class="bmpc-close" id="bmmPcClose">✕ Volver</button></header>
+ <div class="bmpc-body" id="bmmPcBody">
+  <section class="bmpc-coach" aria-live="polite">
+   <div class="bmpc-coach-top"><strong id="bmmPcDecision">CARGÁ CARTAS</strong><span class="bmpc-flag" id="bmmPcFlag">SIN CARTAS</span></div>
+   <div class="bmpc-metrics"><span>Ganar con esta acción <b id="bmmPcWin">—</b></span><span>Pasarte al pedir <b id="bmmPcBust">—</b></span></div>
+  </section>
+  <section class="bmpc-slots" id="bmmPcSlots" aria-label="Cartas cargadas. Tocá una casilla para corregirla">
+   <button type="button" class="bmpc-slot" data-pc-slot="me0" data-filled="false"><span>TU 1ª</span><strong>—</strong></button>
+   <button type="button" class="bmpc-slot" data-pc-slot="dealer" data-filled="false"><span>CRUPIER</span><strong>—</strong></button>
+   <button type="button" class="bmpc-slot" data-pc-slot="me1" data-filled="false"><span>TU 2ª</span><strong>—</strong></button>
+   <button type="button" class="bmpc-slot" data-pc-slot="extra" data-filled="false" hidden><span>PEDIDAS</span><strong>+0</strong></button>
+  </section>
+  <div class="bmpc-hint" id="bmmPcHint">Tocá el valor de tu primera carta.</div>
+  <div class="bmpc-ranks" id="bmmPcRanks" aria-label="Valores de las cartas"></div>
+ </div>
+ <footer class="bmpc-foot"><button type="button" id="bmmPcNewHand">↻ Nueva mano</button></footer>
+</section>
+
 <script>
 /* Mobile Quick Entry: isolated UI adapter over the approved V1.6 engine. */
 (function(){'use strict';
@@ -1018,6 +1069,90 @@ setupControls();render();runCalculation();
  };
  window.addEventListener('beforeunload',releasePhoto);
  draw();open();
+})();
+</script>
+
+<script>
+/* Modo PC compacto: maneja la app existente por sus propios controles. No toca el motor. */
+(function(){'use strict';
+ const $=id=>document.getElementById(id);
+ const RANKS=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+ const pc=$('bmmPc'),ranksBox=$('bmmPcRanks');
+ let ticker=null;
+ const meEl=()=>document.querySelectorAll('#meHand .card-face:not(.fake):not(.virtual)');
+ const dealerEl=()=>document.querySelectorAll('#dealerHand .card-face:not(.fake):not(.virtual)');
+ const ranksOf=els=>Array.from(els).map(el=>el.dataset.rank);
+ function seat(target){const el=document.querySelector('[data-target="'+target+'"]');if(el)el.click();}
+ function nextSlot(){const me=meEl().length,dealer=dealerEl().length;
+  if(me===0)return 'me0';if(dealer===0)return 'dealer';if(me<2)return 'me1';return 'extra';}
+ function hintFor(slot){
+  if(slot==='me0')return 'Tocá el valor de tu primera carta.';
+  if(slot==='dealer')return 'Ahora la carta visible del crupier.';
+  if(slot==='me1')return 'Ahora tu segunda carta.';
+  return 'Mano completa: si pedís otra carta, tocá su valor. Tocá una casilla para corregir.';
+ }
+ function paint(){
+  const me=ranksOf(meEl()),dealer=ranksOf(dealerEl());
+  const values={me0:me[0]||'',dealer:dealer[0]||'',me1:me[1]||'',extra:me.length>2?me.slice(2):[]};
+  for(const key of ['me0','dealer','me1']){
+   const b=document.querySelector('#bmmPcSlots [data-pc-slot="'+key+'"]');if(!b)continue;
+   const v=values[key];b.querySelector('strong').textContent=v||'—';b.dataset.rank=v;
+   b.dataset.filled=v?'true':'false';
+   b.setAttribute('aria-label',(key==='dealer'?'Carta del crupier':key==='me0'?'Tu primera carta':'Tu segunda carta')+': '+(v||'sin cargar')+'. Tocar para corregir.');
+  }
+  const extra=document.querySelector('#bmmPcSlots [data-pc-slot="extra"]');
+  if(extra){
+   extra.hidden=values.extra.length===0;
+   extra.querySelector('strong').textContent='+'+values.extra.length;
+   extra.dataset.rank=values.extra.join(',');
+   extra.dataset.filled=values.extra.length?'true':'false';
+   extra.setAttribute('aria-label','Cartas pedidas: '+(values.extra.join(', ')||'ninguna')+'. Tocar para quitar la última.');
+  }
+  const slot=nextSlot();$('bmmPcHint').textContent=hintFor(slot);
+  document.querySelectorAll('#bmmPcRanks [data-pc-rank]').forEach(b=>{
+   const src=document.querySelector('#ranks button[data-rank="'+b.dataset.pcRank+'"]');
+   b.disabled=src?src.disabled:false;
+  });
+  syncCoach();
+ }
+ function syncCoach(){
+  $('bmmPcDecision').textContent=$('bmDecision').textContent;
+  $('bmmPcFlag').textContent=$('bmCoachFlag').textContent;
+  $('bmmPcWin').textContent=$('bmBestWin').textContent;
+  $('bmmPcBust').textContent=$('bmBustRisk').textContent;
+ }
+ function addRank(rank){
+  seat(nextSlot()==='dealer'?'dealer':'me');
+  const btn=document.querySelector('#ranks button[data-rank="'+rank+'"]');
+  if(!btn||btn.disabled){$('bmmPcHint').textContent='No quedan cartas '+rank+' en el zapato registrado.';return;}
+  btn.click();paint();
+ }
+ function removeSlot(key){
+  if(key==='extra'){
+   const mine=meEl(),last=mine[mine.length-1];if(!last)return;
+   last.querySelector('.remove-card')?.click();paint();return;
+  }
+  const map={me0:['me',0],dealer:['dealer',0],me1:['me',1]};
+  const [target,index]=map[key];if(!map[key])return;
+  const btn=document.querySelector('[data-remove-target="'+target+'"][data-remove-index="'+index+'"]');
+  if(!btn)return;
+  btn.click();seat(nextSlot()==='dealer'?'dealer':'me');paint();
+ }
+ function open(){
+  pc.classList.add('open');document.body.style.overflow='hidden';document.documentElement.style.overflow='hidden';paint();
+  const first=document.querySelector('#bmmPcRanks [data-pc-rank]:not(:disabled)');if(first)first.focus();
+  ticker=setInterval(syncCoach,150);
+ }
+ function close(){pc.classList.remove('open');document.body.style.overflow='';document.documentElement.style.overflow='';if(ticker){clearInterval(ticker);ticker=null;}}
+ ranksBox.innerHTML=RANKS.map(r=>'<button type="button" class="bmpc-rank" data-pc-rank="'+r+'" aria-label="Carta '+r+'">'+r+'</button>').join('');
+ ranksBox.addEventListener('click',e=>{const b=e.target.closest('[data-pc-rank]');if(b)addRank(b.dataset.pcRank);});
+ $('bmmPcSlots').addEventListener('click',e=>{const b=e.target.closest('[data-pc-slot]');if(b)removeSlot(b.dataset.pcSlot);});
+ $('bmmPcNewHand').addEventListener('click',()=>{$('newHandBtn').click();paint();});
+ $('bmmPcClose').addEventListener('click',close);
+ $('bmmPcToggle').addEventListener('click',open);
+ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&pc.classList.contains('open'))close();});
+ window.addEventListener('beforeunload',()=>{if(ticker)clearInterval(ticker);});
+ paint();
 })();
 </script>
 
