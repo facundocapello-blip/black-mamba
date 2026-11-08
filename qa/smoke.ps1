@@ -20,6 +20,9 @@ try {
   if ($bytes -lt 100000) { $fallas.Add("pesa $bytes bytes: parece una pagina de error, no la app") }
   if ($html -notmatch 'BLACK MAMBA') { $fallas.Add("no aparece el titulo BLACK MAMBA") }
   if ($html -notmatch 'Tesseract') { $fallas.Add("no aparece Tesseract: puede faltar el lector de cartas") }
+  # Distingue esta version estable de un deploy viejo.
+  if ($html -notmatch 'V1\.7M') { $fallas.Add("no aparece la etiqueta V1.7M: puede ser un deploy viejo") }
+  if ($html -notmatch 'id="bmmPcToggle"') { $fallas.Add("no aparece el boton de modo PC (bmmPcToggle)") }
 } catch {
   $fallas.Add("$Url -> $($_.Exception.Message)")
 } finally {

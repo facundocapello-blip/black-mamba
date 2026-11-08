@@ -946,6 +946,9 @@ function setupControls(){
  $('ranks').addEventListener('click',e=>{const btn=e.target.closest('[data-rank]');if(btn)handleCard(btn.dataset.rank);});
  document.addEventListener('click',e=>{const rem=e.target.closest('[data-remove-target]');if(rem){e.stopPropagation();removeCard(rem.dataset.removeTarget,Number(rem.dataset.removeIndex));return;}const seat=e.target.closest('[data-target]');if(seat)updateSelected(seat.dataset.target);});
  document.addEventListener('keydown',e=>{if(e.target.closest('input,select')||$('settingsModal').classList.contains('show'))return;
+   /* Con un overlay abierto el teclado es del overlay: si no, las cartas entran
+      al tablero sin que la vista compacta se entere. */
+   if($('bmmPc')?.classList.contains('open')||$('bmmOverlay')?.classList.contains('open'))return;
    if(e.key==='Enter'||e.key===' '){const target=e.target.closest('[data-target]');if(target){e.preventDefault();updateSelected(target.dataset.target);return;}}
    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();undoLast();return;}
    if(e.altKey||e.metaKey||e.ctrlKey||e.shiftKey)return;
@@ -987,7 +990,7 @@ setupControls();render();runCalculation();
   <section class="bmm-panel"><h3>1 · Mirá tu mesa</h3><p class="bmm-sub">Hacé una captura en Betano y elegila desde Fotos. El detector intenta leer las tres cartas sin subir tu imagen a un servidor. Confirmá los valores antes de calcular.</p>
    <div class="bmm-photo" id="bmmPhoto"><div class="bmm-photo-placeholder" id="bmmPlaceholder"><span>▧</span>Elegí una captura<br>El reconocimiento funciona con imágenes, no con video</div><div class="bmm-stage" id="bmmStage" hidden><img id="bmmPreview" alt="Captura de la mesa para reconocer las cartas" hidden><div id="bmmMarkers" class="bmm-markers" aria-hidden="true"></div></div></div>
    <div class="bmm-photo-actions"><label for="bmmFile" class="bmm-file-label">↑ Elegir captura de Fotos</label><input id="bmmFile" type="file" accept="image/*"><button type="button" class="bmm-minibtn" id="bmmZoom" disabled>Ampliar foto</button><button type="button" class="bmm-minibtn" id="bmmRemovePhoto" disabled>Quitar foto</button></div>
-   <div class="bmm-ocr-actions"><button type="button" id="bmmRecognize" class="bmm-ocr-primary" disabled>✦ Reconocer cartas</button><button type="button" id="bmmCalibrate" class="bmm-minibtn" disabled>⌖ Ajustar posiciones</button></div>
+   <div class="bmm-ocr-actions"><button type="button" id="bmmRecognize" class="bmm-ocr-primary" disabled>✦ Reconocer cartas</button><button type="button" id="bmmCalibrate" class="bmm-minibtn" disabled>⌖ Ajustar posiciones</button><button type="button" id="bmmCalReset" class="bmm-minibtn" title="Volver a las posiciones base y borrar las guardadas para este tamaño" disabled>↺ Restablecer</button></div>
    <div id="bmmOcrStatus" class="bmm-ocr-status" role="status" aria-live="polite">Cargá una captura para empezar.</div>
    <div class="bmm-crops" id="bmmCrops" aria-label="Vista ampliada de los símbolos a reconocer"><div class="bmm-crop"><span>1 · TU PRIMERA</span><canvas id="bmmCrop0" width="100" height="100"></canvas><small id="bmmOcr0">Sin imagen</small></div><div class="bmm-crop"><span>2 · CRUPIER</span><canvas id="bmmCrop1" width="100" height="100"></canvas><small id="bmmOcr1">Sin imagen</small></div><div class="bmm-crop"><span>3 · TU SEGUNDA</span><canvas id="bmmCrop2" width="100" height="100"></canvas><small id="bmmOcr2">Sin imagen</small></div></div>
    <p class="bmm-note" id="bmmCalibrationHelp">Si el recorte no muestra UNA letra o número, tocá «Ajustar posiciones» y después tocá cada símbolo en la foto, en orden: primera tuya, crupier, segunda tuya.</p>
@@ -1064,11 +1067,13 @@ setupControls();render();runCalculation();
  });
  window.BMMMobile={
   clear:()=>{chosen=['','',''];active=0;draw();},
-  setRecognized:(values)=>{values.forEach((v,i)=>{if(ranks.includes(v))chosen[i]=v;});active=chosen.findIndex(v=>!v);if(active<0)active=2;draw();status(chosen.every(Boolean)?'Reconocimiento completo. Verificá las tres cartas antes de analizar.':'Completá o corregí las cartas que falten.');},
+  setRecognized:(values)=>{values.forEach((v,i)=>{chosen[i]=ranks.includes(v)?v:'';});active=chosen.findIndex(v=>!v);if(active<0)active=2;draw();status(chosen.every(Boolean)?'Reconocimiento completo. Verificá las tres cartas antes de analizar.':'Completá o corregí las cartas que falten.');},
   values:()=>chosen.slice()
  };
  window.addEventListener('beforeunload',releasePhoto);
- draw();open();
+ draw();
+ /* En escritorio (mouse) no se abre solo: taparía el botón de modo PC. */
+ if(!window.matchMedia('(hover: hover) and (pointer: fine)').matches)open();
 })();
 </script>
 
@@ -1115,31 +1120,58 @@ setupControls();render();runCalculation();
   });
   syncCoach();
  }
+ function setText(id,value){const el=$(id);if(el&&el.textContent!==value)el.textContent=value;}
  function syncCoach(){
-  $('bmmPcDecision').textContent=$('bmDecision').textContent;
-  $('bmmPcFlag').textContent=$('bmCoachFlag').textContent;
-  $('bmmPcWin').textContent=$('bmBestWin').textContent;
-  $('bmmPcBust').textContent=$('bmBustRisk').textContent;
+  setText('bmmPcDecision',$('bmDecision').textContent);
+  const flag=$('bmCoachFlag');setText('bmmPcFlag',flag.textContent);
+  const flagClass='bmpc-flag '+(flag.className||'');
+  if($('bmmPcFlag').className!==flagClass.trim())$('bmmPcFlag').className=flagClass.trim();
+  setText('bmmPcWin',$('bmBestWin').textContent);
+  setText('bmmPcBust',$('bmBustRisk').textContent);
  }
+ let pendingInsert=null;
  function addRank(rank){
-  seat(nextSlot()==='dealer'?'dealer':'me');
+  const target=pendingInsert?pendingInsert.target:(nextSlot()==='dealer'?'dealer':'me');
+  seat(target);
   const btn=document.querySelector('#ranks button[data-rank="'+rank+'"]');
   if(!btn||btn.disabled){$('bmmPcHint').textContent='No quedan cartas '+rank+' en el zapato registrado.';return;}
-  btn.click();paint();
+  btn.click();
+  if(pendingInsert){
+   const tail=pendingInsert.tail.slice();pendingInsert=null;
+   for(const r of tail){
+    seat(target);
+    const b=document.querySelector('#ranks button[data-rank="'+r+'"]');
+    if(b&&!b.disabled)b.click();
+   }
+  }
+  paint();
  }
  function removeSlot(key){
+  pendingInsert=null;
   if(key==='extra'){
    const mine=meEl(),last=mine[mine.length-1];if(!last)return;
    last.querySelector('.remove-card')?.click();paint();return;
   }
   const map={me0:['me',0],dealer:['dealer',0],me1:['me',1]};
-  const [target,index]=map[key];if(!map[key])return;
-  const btn=document.querySelector('[data-remove-target="'+target+'"][data-remove-index="'+index+'"]');
-  if(!btn)return;
-  btn.click();seat(nextSlot()==='dealer'?'dealer':'me');paint();
+  const entry=map[key];if(!entry)return;
+  const [target,index]=entry;
+  const hand=target==='dealer'?ranksOf(dealerEl()):ranksOf(meEl());
+  if(index>=hand.length)return;
+  const tail=hand.slice(index+1);
+  /* Se quita desde el final para que los índices no se corran; las cartas
+     posteriores se vuelven a cargar después de la nueva, así «TU 1ª» sigue
+     siendo la primera carta y no se intercambian las casillas. */
+  for(let i=hand.length-1;i>=index;i--){
+   const btn=document.querySelector('[data-remove-target="'+target+'"][data-remove-index="'+i+'"]');
+   if(!btn)return;
+   btn.click();
+  }
+  pendingInsert={target,tail};
+  seat(target==='dealer'?'dealer':'me');
+  paint();
  }
  function open(){
-  pc.classList.add('open');document.body.style.overflow='hidden';document.documentElement.style.overflow='hidden';paint();
+  pendingInsert=null;pc.classList.add('open');document.body.style.overflow='hidden';document.documentElement.style.overflow='hidden';paint();
   const first=document.querySelector('#bmmPcRanks [data-pc-rank]:not(:disabled)');if(first)first.focus();
   ticker=setInterval(syncCoach,150);
  }
@@ -1147,9 +1179,16 @@ setupControls();render();runCalculation();
  ranksBox.innerHTML=RANKS.map(r=>'<button type="button" class="bmpc-rank" data-pc-rank="'+r+'" aria-label="Carta '+r+'">'+r+'</button>').join('');
  ranksBox.addEventListener('click',e=>{const b=e.target.closest('[data-pc-rank]');if(b)addRank(b.dataset.pcRank);});
  $('bmmPcSlots').addEventListener('click',e=>{const b=e.target.closest('[data-pc-slot]');if(b)removeSlot(b.dataset.pcSlot);});
- $('bmmPcNewHand').addEventListener('click',()=>{$('newHandBtn').click();paint();});
+ $('bmmPcNewHand').addEventListener('click',()=>{pendingInsert=null;$('newHandBtn').click();paint();});
  $('bmmPcClose').addEventListener('click',close);
  $('bmmPcToggle').addEventListener('click',open);
+ document.addEventListener('keydown',e=>{
+  if(!pc.classList.contains('open'))return;
+  if(e.target.closest('input,select'))return;
+  if(e.altKey||e.metaKey||e.ctrlKey)return;
+  const key=e.key.toUpperCase(),rank=key==='0'?'10':key;
+  if(key.length===1&&RANKS.includes(rank)){e.preventDefault();addRank(rank);}
+ });
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&pc.classList.contains('open'))close();});
  window.addEventListener('beforeunload',()=>{if(ticker)clearInterval(ticker);});
  paint();
@@ -1203,6 +1242,7 @@ setupControls();render();runCalculation();
   imageSerial++;if(stage)stage.hidden=true;
   if($('bmmRecognize'))$('bmmRecognize').disabled=true;
   if($('bmmCalibrate'))$('bmmCalibrate').disabled=true;
+  if($('bmmCalReset'))$('bmmCalReset').disabled=true;
   calibrating=false;document.body.classList.remove('bmm-calibrating');
   clearCrops();if($('bmmMarkers'))$('bmmMarkers').innerHTML='';
   status('Cargá una captura para empezar.');
@@ -1426,6 +1466,8 @@ setupControls();render();runCalculation();
   return out;
  }
 
+ function maskHeight(m){let y0=24,y1=-1;for(let y=0;y<24;y++)for(let x=0;x<24;x++)if(m[y*24+x]){if(y<y0)y0=y;if(y>y1)y1=y;}return y1<0?0:(y1-y0+1)/24;}
+
  function classifyGlyph(i){
   const n=getBaseSize(),p=refinedPoints[i]||points[i];
   const x=Math.round(p[0]*img.naturalWidth-n/2),y=Math.round(p[1]*img.naturalHeight-n/2);
@@ -1436,7 +1478,7 @@ setupControls();render();runCalculation();
   const {ink,maxInk}=extractInk(d,n*n);
   const thresholds=[Math.max(45,Math.round(maxInk*0.36)),Math.max(55,Math.round(maxInk*0.46)),Math.max(70,Math.round(maxInk*0.56)),Math.max(85,Math.round(maxInk*0.66))];
   const scores=new Map();
-  const dbg=[];
+  const dbg=[];let maxArea=0;
   /* Tamaño de referencia del glifo completo, tomado del mayor componente
      entre todos los umbrales. Sirve para descartar fragmentos: en el '10',
      un '1' suelto no debe ganarle al par completo. */
@@ -1478,9 +1520,10 @@ setupControls();render();runCalculation();
    for(const cand of candidates){
     const area=cand.mask.reduce((a,b)=>a+b,0);
     if(area<refArea*0.5)continue;
+    if(area>maxArea)maxArea=area;
     const {mask:target,aspect}=glyphMask(cand.mask,n,n);
     const {holes,topY,botY}=countHoles(target,24,24);
-    const entry=DEBUG?{isTenPair:cand.isTenPair,aspect,holes,topY,botY,area,top:[]}:null;
+    const entry=DEBUG?{isTenPair:cand.isTenPair,aspect,holes,topY,botY,area,hgt:maskHeight(target),top:[]}:null;
     for(const tpl of templates()){
      if(cand.isTenPair&&tpl.rank!=='10')continue;
      let bestShift=0;
@@ -1517,7 +1560,7 @@ setupControls();render();runCalculation();
   const options=[...scores.entries()].sort((a,b)=>b[1]-a[1]);
   const best=options[0],next=options[1];
   if(DEBUG)window.__bmmLastClassify={i,n,maxInk,cands:dbg,options:options.slice(0,6)};
-  return {rank:best?.[0]||'',score:best?.[1]||0,margin:(best?.[1]||0)-(next?.[1]||0),alternatives:options.slice(0,3)};
+  return {rank:best?.[0]||'',score:best?.[1]||0,margin:(best?.[1]||0)-(next?.[1]||0),area:maxArea,alternatives:options.slice(0,3)};
  }
 
  async function getWorker(){
@@ -1562,7 +1605,11 @@ setupControls();render();runCalculation();
      continue;
     }
     const r=classifyGlyph(i);
-    if(r.rank&&r.score>=.58&&r.margin>=.035){
+    /* Guardas contra leer texto de la interfaz como si fuera una carta:
+       margen mínimo sobre la segunda opción y tamaño mínimo de la tinta
+       (relativo al recorte). Si no se cumplen, queda «Dudosa» y se confirma a mano. */
+    const minInk=getBaseSize()*getBaseSize()*0.18;
+    if(r.rank&&r.score>=.58&&r.margin>=.09&&r.area>=minInk){
      results[i]=r.rank;templateCount++;
      if($('bmmOcr'+i))$('bmmOcr'+i).textContent=r.rank+' · confirmar';
     }else if($('bmmOcr'+i)){
@@ -1612,6 +1659,16 @@ setupControls();render();runCalculation();
  }
 
  if($('bmmCalibrate'))$('bmmCalibrate').addEventListener('click',calibrate);
+ if($('bmmCalReset'))$('bmmCalReset').addEventListener('click',()=>{
+  if(!img||!img.naturalWidth)return;
+  /* Salida de una calibración mala: borra lo guardado para este tamaño y vuelve a la base. */
+  try{localStorage.removeItem(STORAGE_PREFIX+storageKey());}catch(_e){}
+  points=pointsDefault.map(p=>p.slice());refinedPoints=points.map(p=>p.slice());
+  calibrating=false;document.body.classList.remove('bmm-calibrating');
+  if($('bmmCalibrate'))$('bmmCalibrate').textContent='⌖ Ajustar posiciones';
+  window.BMMMobile?.clear();refreshCrops();
+  status('Posiciones restablecidas para esta captura. Si tampoco coincide, tocá «Ajustar posiciones».');
+ });
  if(stage)stage.addEventListener('click',e=>{
   if(!calibrating||!img)return;
   const rect=img.getBoundingClientRect();if(!rect.width||!rect.height)return;
@@ -1639,6 +1696,7 @@ setupControls();render();runCalculation();
   refinedPoints=points.map(p=>p.slice());
   if($('bmmRecognize'))$('bmmRecognize').disabled=false;
   if($('bmmCalibrate'))$('bmmCalibrate').disabled=false;
+  if($('bmmCalReset'))$('bmmCalReset').disabled=false;
   refreshCrops();window.BMMMobile?.clear();
   if(ratio<1.1&&!saved){
    status('Captura vertical cargada. Tocá «Ajustar posiciones» una vez para guardar las coordenadas de tu teléfono.');

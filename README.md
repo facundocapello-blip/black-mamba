@@ -58,7 +58,7 @@ Sin internet, el OCR no funciona (el resto de la app sí). El propio panel lo av
 | Versión | Archivo | Bytes | SHA-256 |
 |---|---|---|---|
 | V1.5.2 | `v1.5.2-publicada/index.html` | 246.562 | `E4C6DD1C4A64D89D8A6E52AC70861150B6523C881F42D136017F9515AFFFDE32` |
-| V1.7M | `v1.7m-staging/index.html` | 318.514 | `0E56ABC66D98AC64FBC9702DD940E2C86512B50FB1AAA385219A743E1181E4A7` |
+| V1.7M | `v1.7m-staging/index.html` | 321.771 | `BFDB9BB20878C9EA3A578A554E449168D76648423CFBF7103623FC34258F69BA` |
 
 - V1.5.2: bajada de https://black-mamba.facucape.chatgpt.site/ el 2026-10-28.
   El tag `v1.5.2-rescatada` conserva el archivo original sin tocar; el commit

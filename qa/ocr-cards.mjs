@@ -14,7 +14,8 @@ import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const APP = '/v1.7m-staging/index.html';
-const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const EDGE = [process.env.EDGE_PATH, 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'].filter(Boolean).find((p) => existsSync(p));
+if (!EDGE) { console.error('No encontré Edge. Definí EDGE_PATH con la ruta a msedge.exe.'); process.exit(1); }
 const SHOT = process.env.BM_OCR_SHOT;
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.json': 'application/json' };
@@ -122,8 +123,6 @@ async function main() {
 
     const read = await evaluate(`(() => ({
       crops: [0,1,2].map(i => document.getElementById('bmmOcr' + i).textContent),
-      steps: [...document.querySelectorAll('#bmmSteps .bmm-step strong')].map(e => e.textContent),
-      slots: [...document.querySelectorAll('#bmmSteps .bmm-step')].map(e => e.dataset.step),
     }))()`);
 
     const value = (t) => (String(t).match(/^(10|[A2-9JQK])/) || [])[1] || '';
@@ -131,6 +130,12 @@ async function main() {
     check('lee tu primera carta (A)', got[0] === 'A', JSON.stringify(read.crops));
     check('lee la carta del crupier (K)', got[1] === 'K', JSON.stringify(read.crops));
     check('lee tu segunda carta (10)', got[2] === '10', JSON.stringify(read.crops));
+
+    /* Lo precargado tiene que ser exactamente lo que la pasada actual marcó como
+       «confirmar»: si una carta quedó Dudosa o sin leer, no puede llegar precargada. */
+    const mobileValues = await evaluate('window.BMMMobile.values()');
+    const confident = read.crops.map((t) => (/· confirmar/.test(t) ? value(t) : ''));
+    check('el panel móvil no conserva lecturas viejas', JSON.stringify(mobileValues) === JSON.stringify(confident), JSON.stringify({ mobileValues, confident }));
 
     const applied = await evaluate(`(() => {
       const before = [...document.querySelectorAll('#meHand .card-face:not(.fake):not(.virtual)')].length;

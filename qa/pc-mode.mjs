@@ -5,14 +5,16 @@
 
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { readFile, mkdtemp, readFile as rf } from 'node:fs/promises';
+import { readFile, mkdtemp } from 'node:fs/promises';
 import { createReadStream, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const APP = '/v1.7m-staging/index.html';
-const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const HEADED = process.argv.includes('--headed');
+const EDGE = [process.env.EDGE_PATH, 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'].filter(Boolean).find((p) => existsSync(p));
+if (!EDGE) { console.error('No encontré Edge. Definí EDGE_PATH con la ruta a msedge.exe.'); process.exit(1); }
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.json': 'application/json' };
 
@@ -74,7 +76,7 @@ async function main() {
   const port = server.address().port;
   const profile = await mkdtemp(path.join(tmpdir(), 'bm-pc-'));
   const edge = spawn(EDGE, [
-    '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
+    ...(HEADED ? [] : ['--headless=new']), '--remote-debugging-port=0', `--user-data-dir=${profile}`,
     '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--hide-scrollbars',
     'about:blank',
   ], { stdio: 'ignore' });
@@ -108,6 +110,15 @@ async function main() {
     })`);
     check('el botón PC entra en la barra a 683 px', headerFit.toggleVisible && headerFit.noHorizontal, JSON.stringify(headerFit));
     check('existe el botón de modo PC', await evaluate('!!document.getElementById("bmmPcToggle")'));
+    check('el panel móvil arranca cerrado en escritorio', await evaluate('!document.getElementById("bmmOverlay")?.classList.contains("open")'));
+    const toggleHit = await evaluate(`(() => {
+      const b = document.getElementById('bmmPcToggle');
+      if (!b) return null;
+      const r = b.getBoundingClientRect();
+      const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return el === b || b.contains(el);
+    })()`);
+    check('el botón PC es clickeable al abrir', toggleHit === true, String(toggleHit));
     check('el modo PC arranca cerrado', await evaluate('!document.getElementById("bmmPc")?.classList.contains("open")'));
     await evaluate('document.getElementById("bmmPcToggle")?.click()');
     check('el modo PC abre', await evaluate('!!document.getElementById("bmmPc")?.classList.contains("open")'));
@@ -132,7 +143,8 @@ async function main() {
     })()`);
     check('la vista compacta está montada', layout !== null);
     if (layout) {
-      check('la página queda bloqueada sin scroll', layout.locked, JSON.stringify({ locked: layout.locked }));      check('sin scroll interno del panel', !layout.scrolls, JSON.stringify({ panelH: layout.panelH, panelClientH: layout.panelClientH, panelW: layout.panelW, panelClientW: layout.panelClientW, overlayH: layout.overlayH, overlayClientH: layout.overlayClientH }));
+      check('la página queda bloqueada sin scroll', layout.locked, JSON.stringify({ locked: layout.locked }));
+      check('sin scroll interno del panel', !layout.scrolls, JSON.stringify({ panelH: layout.panelH, panelClientH: layout.panelClientH, panelW: layout.panelW, panelClientW: layout.panelClientW, overlayH: layout.overlayH, overlayClientH: layout.overlayClientH }));
       check('13 valores de carta disponibles', layout.ranks === 13, `encontrados: ${layout.ranks}`);
     }
 
@@ -226,12 +238,16 @@ async function main() {
     })()`);
     check('el modo PC respeta la disponibilidad del zapato', mirror.length === 0, mirror.join(','));
 
-    // 5d. Teclado real: una letra carga la carta (el tablero ya soporta teclas).
+    // 5d. Teclado real: una letra carga la carta y la casilla se repinta.
     await evaluate('document.activeElement?.blur()');
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'q', code: 'KeyQ', windowsVirtualKeyCode: 81, text: 'q' });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'q', code: 'KeyQ', windowsVirtualKeyCode: 81 });
-    const kbdCard = await evaluate(`[...document.querySelectorAll('#meHand .card-face:not(.fake):not(.virtual)')].map(e => e.dataset.rank).join(',')`);
-    check('el teclado carga una carta en el modo PC', kbdCard.includes('Q'), kbdCard || 'sin cartas');
+    const kbdCard = await evaluate(`({
+      me: [...document.querySelectorAll('#meHand .card-face:not(.fake):not(.virtual)')].map(e => e.dataset.rank).join(','),
+      slot: document.querySelector('#bmmPcSlots [data-pc-slot="me0"] strong')?.textContent,
+    })`);
+    check('el teclado carga una carta en el modo PC', kbdCard.me.includes('Q'), kbdCard.me || 'sin cartas');
+    check('el teclado repinta la casilla', kbdCard.slot === 'Q', JSON.stringify(kbdCard));
 
     const kbd = await evaluate(`(() => {
       const b = document.querySelector('#bmmPcRanks [data-pc-rank="A"]');
@@ -241,6 +257,20 @@ async function main() {
       return { focused: document.activeElement === b, tag: b.tagName, type: b.type, tabIndex: b.tabIndex };
     })()`);
     check('los valores de carta son botones accesibles', !!kbd && kbd.tag === 'BUTTON' && kbd.tabIndex >= 0, JSON.stringify(kbd));
+
+    // 6. Corregir la primera carta con dos cargas no intercambia las casillas.
+    await evaluate(`document.querySelector('#bmmPcSlots [data-pc-slot="me0"]')?.click()`);
+    for (const rank of ['A', '5']) await evaluate(`document.querySelector('#bmmPcRanks [data-pc-rank="${rank}"]')?.click()`);
+    await evaluate(`document.querySelector('#bmmPcSlots [data-pc-slot="me0"]')?.click()`);
+    await evaluate(`document.querySelector('#bmmPcRanks [data-pc-rank="7"]')?.click()`);
+    const reordered = await evaluate(`({
+      me: [...document.querySelectorAll('#meHand .card-face:not(.fake):not(.virtual)')].map(e => e.dataset.rank).join(','),
+      dealer: [...document.querySelectorAll('#dealerHand .card-face:not(.fake):not(.virtual)')].length,
+      first: document.querySelector('#bmmPcSlots [data-pc-slot="me0"] strong')?.textContent,
+      second: document.querySelector('#bmmPcSlots [data-pc-slot="me1"] strong')?.textContent,
+    })`);
+    check('corregir la primera carta conserva el orden', reordered.me === '7,5', JSON.stringify(reordered));
+    check('las casillas siguen la posición de cada carta', reordered.first === '7' && reordered.second === '5' && reordered.dealer === 1, JSON.stringify(reordered));
 
     // 7. Nueva mano limpia la mesa y conserva el zapato.
     const before = await evaluate(`({ spent: document.getElementById('spentCounter').textContent })`);
