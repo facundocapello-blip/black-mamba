@@ -120,8 +120,18 @@ async function main() {
     })()`);
     check('el botón PC es clickeable al abrir', toggleHit === true, String(toggleHit));
     check('el modo PC arranca cerrado', await evaluate('!document.getElementById("bmmPc")?.classList.contains("open")'));
-    await evaluate('document.getElementById("bmmPcToggle")?.click()');
+    await evaluate(`(() => { const h = document.getElementById('hypoCheck'); h.checked = true; h.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('bmmPcToggle').focus(); document.getElementById('bmmPcToggle').click(); })()`);
     check('el modo PC abre', await evaluate('!!document.getElementById("bmmPc")?.classList.contains("open")'));
+    check('al abrir, el foco queda dentro del modo PC', await evaluate('document.getElementById("bmmPc")?.contains(document.activeElement)') === true);
+    check('la simulación se desactiva al abrir', await evaluate('!document.getElementById("hypoCheck").checked'));
+    await evaluate('document.getElementById("bmmPcNewHand").focus()');
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+    check('Tab permanece en el modo PC', await evaluate('document.getElementById("bmmPc").contains(document.activeElement)'));
+    await evaluate('document.getElementById("bmmPcClose").focus()');
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
+    check('Shift+Tab permanece en el modo PC', await evaluate('document.getElementById("bmmPc").contains(document.activeElement)'));
 
     // 2. Sin scroll a 683 × 768, ni de página ni del panel.
     const layout = await evaluate(`(() => {
@@ -288,6 +298,7 @@ async function main() {
     // 8. Cerrar el modo PC y comprobar que la app sigue funcionando.
     await evaluate('document.getElementById("bmmPcClose")?.click()');
     check('el modo PC cierra', await evaluate('!document.getElementById("bmmPc")?.classList.contains("open")'));
+    check('al cerrar devuelve el foco al botón PC', await evaluate('document.activeElement === document.getElementById("bmmPcToggle")'));
     await evaluate('document.getElementById("exampleBtn")?.click()');
     const exampleSamples = [];
     for (let i = 0; i < 60; i++) {

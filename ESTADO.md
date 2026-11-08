@@ -10,6 +10,7 @@ Actualizado: 2026-11-08
 - V1.5.2 queda **archivada** en `v1.5.2-publicada/` (246.562 bytes, hash en README). No se borra ni se toca.
 
 ## Abierto
+- Modo PC: se prepararon ajustes para mantener el foco con Tab y desactivar la simulación al abrir; verificados localmente con `node qa/pc-mode.mjs`.
 - Probar en vivo el modo PC con Betano al lado (683 × 768) y confirmar que sirve para jugar.
 - El OCR ya lee la captura de referencia; falta probarlo con más capturas y encuadres antes de confiar en él.
 
@@ -37,7 +38,7 @@ Actualizado: 2026-11-08
 - La detección local sigue prefiriendo no leer antes que inventar: si el valor queda «Dudosa», hay que confirmarlo o cargarlo a mano.
 - `origin/main` puede avanzar desde otra máquina: hacer `fetch` antes de mergear.
 - `opencode.jsonc` está sin trackear a propósito (config local que enlaza `find-skills`).
-- Con la simulación hipotética activa, el modo PC no muestra la carta fantasma: apagala antes de usarlo. El overlay todavía no atrapa el foco del teclado (Tab puede ir al tablero de atrás).
+- La simulación hipotética se desactiva al abrir el modo PC: las cartas cargadas allí son reales.
 
 ## Verificar
 - `powershell -NoProfile -File qa/smoke.ps1` — HTTP 200, título, tamaño, etiqueta V1.7M, botón de modo PC y que Tesseract siga referenciado.
