@@ -1,17 +1,18 @@
 # ESTADO — BLACK MAMBA
 
-Actualizado: 2026-11-07
+Actualizado: 2026-11-08
 
 ## Publicado
 - `https://facundocapello-blip.github.io/black-mamba/` — GitHub Actions publica `v1.7m-staging`.
 - Publicado: `origin/main` `e921125` (modo PC + parche OCR + favicon vacío). Verificado en vivo: 200, 311 KB, consola sin errores, OCR lee A / K / 10 y el botón «Ejemplo» da PLANTARSE 21,3 %.
-- Etiqueta visible: **V1.6M · STAGING** (motor V1.6M + capa OCR V1.7M integrada).
+- Etiqueta visible: **V1.7M** (estable desde el 2026-11-07; se quitó «STAGING» del tablero y del panel móvil).
 - Respaldo de la versión anterior: etiqueta `v1.6m-antes-modo-pc-20261107` (`81cf73f`).
+- V1.5.2 queda **archivada** en `v1.5.2-publicada/` (246.562 bytes, hash en README). No se borra ni se toca.
 
 ## Abierto
 - Probar en vivo el modo PC con Betano al lado (683 × 768) y confirmar que sirve para jugar.
 - El OCR ya lee la captura de referencia; falta probarlo con más capturas y encuadres antes de confiar en él.
-- Decidir si V1.7M pasa a ser la versión estable y V1.5.2 queda archivada.
+- Verificar el deploy del cambio de etiqueta a V1.7M estable (ver «Verificar»).
 
 ## OCR (publicado)
 - Parche de Gemini aplicado en `v1.7m-staging/index.html`: ventana más grande, recentrado sobre la tinta, lectura de palos rojos y negros, unión de componentes para el «10», PSM 8 y calibración persistente.

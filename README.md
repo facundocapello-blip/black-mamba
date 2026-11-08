@@ -13,15 +13,19 @@ Existe porque el código nunca estuvo en un repositorio: vivía en el deploy de
 Repo: https://github.com/facundocapello-blip/black-mamba
 
 Se publica con GitHub Actions (`.github/workflows/pages.yml`), que toma la carpeta
-indicada en `path`. Hoy apunta a `v1.7m-staging`. Para volver a la V1.5.2, cambiar
-esa línea a `v1.5.2-publicada` y pushear.
+indicada en `path`. Hoy apunta a `v1.7m-staging`, que es la **versión estable**.
+Para volver a la V1.5.2, cambiar esa línea a `v1.5.2-publicada` y pushear; también
+se puede volver al tag `v1.6m-antes-modo-pc-20261107`.
 
 ## Versiones
 
 | Carpeta | Versión | Origen | Estado |
 |---|---|---|---|
-| `v1.5.2-publicada/` | V1.5.2 (con CSS V1.5.3 en progreso) | Deploy público | Publicada, funciona |
-| `v1.7m-staging/` | V1.6M motor + capa OCR V1.7M | `BLACK_MAMBA_V1_7M_ORIGINAL.zip` | Staging, funciona |
+| `v1.5.2-publicada/` | V1.5.2 (con CSS V1.5.3 en progreso) | Deploy público | Archivada (respaldo) |
+| `v1.7m-staging/` | V1.7M (motor V1.6M + OCR y modo PC) | `BLACK_MAMBA_V1_7M_ORIGINAL.zip` | **Estable, publicada** |
+
+La carpeta conserva el nombre `staging` por historia del deploy; no es un estado, es
+el nombre del directorio. No renombrarla sin actualizar el `path` del workflow.
 
 ## Hallazgo importante sobre V1.7M
 
@@ -54,13 +58,15 @@ Sin internet, el OCR no funciona (el resto de la app sí). El propio panel lo av
 | Versión | Archivo | Bytes | SHA-256 |
 |---|---|---|---|
 | V1.5.2 | `v1.5.2-publicada/index.html` | 246.562 | `E4C6DD1C4A64D89D8A6E52AC70861150B6523C881F42D136017F9515AFFFDE32` |
-| V1.7M | `v1.7m-staging/index.html` | 298.057 | `60F23254B7B47C74715E04DBF83258FC2C9BA1796CAB355445DE75A54B48FDC3` |
+| V1.7M | `v1.7m-staging/index.html` | 318.514 | `0E56ABC66D98AC64FBC9702DD940E2C86512B50FB1AAA385219A743E1181E4A7` |
 
 - V1.5.2: bajada de https://black-mamba.facucape.chatgpt.site/ el 2026-10-28.
   El tag `v1.5.2-rescatada` conserva el archivo original sin tocar; el commit
   siguiente le quitó un script de detección de bots de Cloudflare que no es parte
   de la aplicación.
-- V1.7M: provista por el autor el 2026-10-28. Se guarda sin modificar.
+- V1.7M: provista por el autor el 2026-10-28. Desde entonces se le agregaron el modo
+  PC compacto, el parche de OCR y un favicon vacío; el hash de arriba corresponde a
+  esa versión publicada.
 
 ## Verificación realizada
 
@@ -69,8 +75,9 @@ Sin internet, el OCR no funciona (el resto de la app sí). El propio panel lo av
 | Carga local | OK, 0 errores | OK, 0 errores |
 | Codificación | UTF-8 correcta | UTF-8 correcta |
 | Peticiones de red al abrir | 0 | 0 |
-| Botón «Ejemplo» | Carga mesa y calcula (PLANTARSE 21,3%) | Carga mesa |
-| Panel OCR | no existe | abre y muestra los 3 recortes |
+| Botón «Ejemplo» | Carga mesa y calcula (PLANTARSE 21,3%) | PLANTARSE 21,3% |
+| Panel OCR | no existe | lee A / K / 10 en la captura de referencia |
+| Modo PC (683 × 768) | no existe | sin scroll, carga y corrección (2026-11-07) |
 
 ## Cómo correrlo
 
@@ -84,9 +91,9 @@ o abrir el `index.html` directamente en el navegador.
 
 ## Pendientes
 
-- [ ] Probar el OCR con capturas reales de Betano (las pruebas históricas usaron
-      imágenes sintéticas, que no sirven para validar).
-- [ ] Decidir si V1.7M reemplaza a V1.5.2 en producción.
+- [ ] Probar el OCR con más capturas reales de Betano y anotar sus cartas; una sola
+      captura no prueba otros encuadres.
+- [x] Decidir si V1.7M reemplaza a V1.5.2 en producción: **sí, desde el 2026-11-07**.
 - [ ] Separar el bundle en archivos (`css/`, `js/`) para poder mantenerlo.
 - [ ] Evaluar empaquetar Tesseract en local y dejar el OCR sin internet.
 - [ ] Probar en Safari de iPhone 15 Pro Max.
