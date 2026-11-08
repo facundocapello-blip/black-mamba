@@ -4,7 +4,7 @@ Actualizado: 2026-11-08
 
 ## Publicado
 - `https://facundocapello-blip.github.io/black-mamba/` — GitHub Actions publica `v1.7m-staging`.
-- Publicado: `origin/main` `91bda7d`. Verificado en vivo el 2026-11-08: 200, 311 KB, consola sin errores, etiqueta **V1.7M** sin «STAGING», OCR lee A / K / 10 y «Ejemplo» da PLANTARSE 21,3 %.
+- Publicado: `origin/main` `36bde41`. Verificado en vivo el 2026-11-08: 200, 314 KB, consola sin errores, etiqueta **V1.7M** sin «STAGING», OCR lee A / K / 10, «Ejemplo» da PLANTARSE 21,3 % y el HTML publicado coincide byte a byte con el local (SHA-256 idéntico).
 - Etiqueta visible: **V1.7M** (estable desde el 2026-11-07; se quitó «STAGING» del tablero y del panel móvil).
 - Respaldo de la versión anterior: etiqueta `v1.6m-antes-modo-pc-20261107` (`81cf73f`).
 - V1.5.2 queda **archivada** en `v1.5.2-publicada/` (246.562 bytes, hash en README). No se borra ni se toca.
@@ -40,6 +40,6 @@ Actualizado: 2026-11-08
 - Con la simulación hipotética activa, el modo PC no muestra la carta fantasma: apagala antes de usarlo. El overlay todavía no atrapa el foco del teclado (Tab puede ir al tablero de atrás).
 
 ## Verificar
-- `powershell -NoProfile -File qa/smoke.ps1` — HTTP 200, título, tamaño y que Tesseract siga referenciado.
-- `node qa/pc-mode.mjs` — modo PC sin scroll, carga, corrección, teclado y que «Ejemplo» siga en 21,3 %.
-- `$env:BM_OCR_SHOT='<captura>'; node qa/ocr-cards.mjs` — detector de cartas sobre una captura real (sin versionar la imagen).
+- `powershell -NoProfile -File qa/smoke.ps1` — HTTP 200, título, tamaño, etiqueta V1.7M, botón de modo PC y que Tesseract siga referenciado.
+- `node qa/pc-mode.mjs` — modo PC sin scroll, carga, corrección (orden incluido), teclado con repintado y que «Ejemplo» siga en 21,3 %. `--headed` para verlo.
+- `$env:BM_OCR_SHOT='<captura>'; node qa/ocr-cards.mjs` — detector de cartas sobre una captura real (sin versionar la imagen) y que el panel móvil no conserve lecturas viejas.
