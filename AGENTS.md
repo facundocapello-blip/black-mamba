@@ -29,3 +29,24 @@ URL: https://facundocapello-blip.github.io/black-mamba/
 2. Consola sin errores.
 3. El botón "Ejemplo" calcula (PLANTARSE 21,3%).
 4. Si se tocó el OCR, probarlo con una captura real.
+
+---
+
+## Skills y plugins recomendados en DeepSeek Harness
+
+Mapa curado para este proyecto. Las skills se cargan con la herramienta `skill`;
+los plugins ya están instalados en el perfil de DSH.
+
+**Skills**
+
+- `impeccable` — La UI es todo el producto: tablero, panel móvil, legibilidad del OCR.
+- `office` — Reportes de auditoría y documentación de estado.
+
+**Plugins**
+
+- **subagent-claude-code** — Auditorías técnicas y refactors de un solo archivo grande.
+- **plugin-dock (Hub)** — Ruteo de pedidos hacia la IA correcta.
+
+**Comandos**
+
+`/arrancar` · `/estado` · `/revisar` · `/cerrar`
