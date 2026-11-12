@@ -308,8 +308,8 @@ async function main() {
       await new Promise((r) => setTimeout(r, 250));
     }
     const example = await evaluate(`({ decision: document.getElementById('bmDecision').textContent, win: document.getElementById('bmBestWin').textContent })`);
-    check('el botón Ejemplo sigue calculando', example.decision === 'PLANTARSE', `${JSON.stringify(example)} · ${[...new Set(exampleSamples)].join(' > ')}`);
-    check('el ejemplo conserva su 21,3 %', example.win.includes('21,3'), example.win);
+    check('el botón Ejemplo sigue calculando', example.decision === 'PEDIR CARTA', `${JSON.stringify(example)} · ${[...new Set(exampleSamples)].join(' > ')}`);
+    check('el ejemplo da 18,6 % (cálculo exacto)', example.win.includes('18,6'), example.win);
 
     // 9. El modo móvil sigue disponible.
     const mobileOk = await evaluate(`(() => { document.getElementById('bmmLaunch').click(); return document.getElementById('bmmOverlay').classList.contains('open'); })()`);

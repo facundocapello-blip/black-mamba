@@ -9,6 +9,15 @@ Actualizado: 2026-11-08
 - Respaldo de la versión anterior: etiqueta `v1.6m-antes-modo-pc-20261107` (`81cf73f`).
 - V1.5.2 queda **archivada** en `v1.5.2-publicada/` (246.562 bytes, hash en README). No se borra ni se toca.
 
+## En rama, sin publicar (`motor-exacto-v1.8`, 2026-11-11)
+- Motor exacto `BJX` dentro de `v1.7m-staging/index.html`: plantarse, pedir y doblar se calculan recorriendo el zapato restante, sin simulación ni ruido, y al instante. Pedir asume la mejor jugada después (antes: estrategia básica fija).
+- Dividir: el EV es exacto (2 manos, sin volver a dividir); el % de ganar al dividir sigue saliendo de la simulación.
+- La simulación original `BJ` queda como respaldo si el cálculo exacto falla.
+- Motivo: con 20.000 simulaciones, 6 de 550 manos iniciales daban una recomendación distinta a la exacta (p. ej. 7+7 contra 8 decía DIVIDIR). Además, sin peek, la simulación doblaba tras dividir sólo cuando el crupier no tenía blackjack (sesgo optimista).
+- **Cambia el botón «Ejemplo»**: ahora da PEDIR CARTA 18,6 % (antes PLANTARSE 21,3 %). Diferencia de EV 0,003: sale con la etiqueta «EV PARECIDOS».
+- Prueba nueva: `node qa/engine.mjs` (sin navegador). `qa/pc-mode.mjs` actualizado al nuevo ejemplo.
+- Falta: publicar (mergear a `main`) y verificar en vivo.
+
 ## Abierto
 - Modo PC: se prepararon ajustes para mantener el foco con Tab y desactivar la simulación al abrir; verificados localmente con `node qa/pc-mode.mjs`.
 - Probar en vivo el modo PC con Betano al lado (683 × 768) y confirmar que sirve para jugar.

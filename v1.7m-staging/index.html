@@ -694,6 +694,135 @@ const BJ = (() => {
   return {RANKS,rankValue,score,hiLo,createCounts,simulationModel,createRunner,chooseHit,singleSample};
 })();
 if(typeof module!=='undefined')module.exports=BJ;
+/* Motor exacto V1.8: recorre el zapato restante en lugar de simular.
+   Mismas reglas que BJ (mazos, S17/H17, peek, doblar, dividir una vez). */
+const BJX = (() => {
+  'use strict';
+  const V = r => r === 'A' ? 0 : (r === '10' || r === 'J' || r === 'Q' || r === 'K') ? 9 : Number(r) - 1;
+  function add(t, s, v) { t += v === 0 ? 11 : v + 1; if (v === 0) s++; while (t > 21 && s > 0) { t -= 10; s--; } return [t, s]; }
+  function handState(cards) { let t = 0, s = 0; for (const r of cards) [t, s] = add(t, s, V(r)); return [t, s]; }
+  const BUST = [0, 0, 0, 0, 0, 1], FINAL = [0, 1, 2, 3, 4].map(i => { const r = [0, 0, 0, 0, 0, 0]; r[i] = 1; return r; });
+  function analyze(data) {
+    const st = data.settings, c = new Array(10).fill(4 * st.decks); c[9] = 16 * st.decks;
+    for (const r of [...data.spent, ...data.me, ...data.dealer, ...data.others.flat()]) { const v = V(r); if (!(v >= 0 && v <= 9)) throw Error('Carta desconocida: ' + r); c[v]--; if (c[v] < 0) throw Error('Demasiadas cartas ' + r); }
+    const n0 = c.reduce((a, b) => a + b, 0);
+    const dealer = data.dealer, up = V(dealer[0]), needHole = dealer.length === 1, h17 = !!st.h17;
+    const [dt0, ds0] = handState(dealer);
+    /* Con peek, la carta tapada no puede completar un blackjack. */
+    const excl = needHole && st.peekNoBJ ? (up === 0 ? 9 : up === 9 ? 0 : -1) : -1;
+    /* Distribución final del crupier: [17,18,19,20,21,se pasa,blackjack]. */
+    const POW = [1, 32, 1024, 32768, 1048576, 33554432, 1073741824, 34359738368, 1099511627776, 35184372088832];
+    function dealerDist(n) {
+      const out = [0, 0, 0, 0, 0, 0, 0], dmemo = new Map();
+      /* Reparto final desde un total; se memoriza por conjunto de cartas robadas. */
+      function rec(t, s, n, key) {
+        if (t > 21) return BUST;
+        if (t > 17 || (t === 17 && (s === 0 || !h17))) return FINAL[t - 17];
+        let r = dmemo.get(key); if (r) return r;
+        r = [0, 0, 0, 0, 0, 0];
+        if (n <= 0) { r[t >= 17 ? t - 17 : 0] = 1; dmemo.set(key, r); return r; }
+        for (let v = 0; v < 10; v++) {
+          const k = c[v]; if (!k) continue;
+          const [nt, ns] = add(t, s, v);
+          c[v]--; const q = rec(nt, ns, n - 1, key + POW[v]); c[v]++;
+          const w = k / n; for (let i = 0; i < 6; i++) r[i] += w * q[i];
+        }
+        dmemo.set(key, r); return r;
+      }
+      if (!needHole) {
+        if (dealer.length === 2 && dt0 === 21) { out[6] = 1; return out; }
+        const q = rec(dt0, ds0, n, 0); for (let i = 0; i < 6; i++) out[i] = q[i]; return out;
+      }
+      const pool = excl >= 0 ? n - c[excl] : n;
+      if (pool <= 0) { out[dt0 >= 17 ? dt0 - 17 : 0] = 1; return out; }
+      for (let v = 0; v < 10; v++) {
+        const k = c[v]; if (!k || v === excl) continue;
+        const [nt, ns] = add(dt0, ds0, v), w = k / pool;
+        if (nt === 21) { out[6] += w; continue; }
+        c[v]--; const q = rec(nt, ns, n - 1, POW[v]); c[v]++;
+        for (let i = 0; i < 6; i++) out[i] += w * q[i];
+      }
+      return out;
+    }
+    function standWTL(t, dd) {
+      let w = dd[5], tie = 0;
+      for (let d = 17; d <= 21; d++) { if (t > d) w += dd[d - 17]; else if (t === d) tie += dd[d - 17]; }
+      return [w, tie, 1 - w - tie];
+    }
+    /* Próxima carta del jugador, condicionada a lo que se sabe de la tapada. */
+    function nextProb(v, n) {
+      if (excl < 0) return c[v] / n;
+      const S = n - c[excl]; if (S <= 0 || n <= 1) return c[v] / n;
+      const cv = v !== excl ? c[v] : 0;
+      return (cv * (c[v] - 1) + (S - cv) * c[v]) / (S * (n - 1));
+    }
+    const drawn = new Array(10).fill(0), memo = new Map();
+    /* Mejor continuación (plantarse o pedir) desde un total dado. */
+    function best(t, s, n) {
+      const key = drawn.join(','); let res = memo.get(key); if (res) return res;
+      const cannotBust = t <= 11;
+      const mustStand = t >= 21 || (s === 0 && t >= 18) || (s > 0 && t >= 20) || n < 2;
+      if (cannotBust && !mustStand) res = hit(t, s, n);
+      else {
+        const [w, tie, l] = standWTL(t, dealerDist(n));
+        res = { ev: w - l, w, tie, l };
+        if (!mustStand) { const h = hit(t, s, n); if (h.ev > res.ev) res = h; }
+      }
+      memo.set(key, res); return res;
+    }
+    function hit(t, s, n) {
+      let ev = 0, w = 0, tie = 0, l = 0;
+      for (let v = 0; v < 10; v++) {
+        if (!c[v]) continue; const p = nextProb(v, n); if (p <= 0) continue;
+        const [nt, ns] = add(t, s, v);
+        if (nt > 21) { ev -= p; l += p; continue; }
+        c[v]--; drawn[v]++; const r = best(nt, ns, n - 1); drawn[v]--; c[v]++;
+        ev += p * r.ev; w += p * r.w; tie += p * r.tie; l += p * r.l;
+      }
+      return { ev, w, tie, l };
+    }
+    function dbl(t, s, n) {
+      let ev = 0, w = 0, tie = 0, l = 0;
+      for (let v = 0; v < 10; v++) {
+        if (!c[v]) continue; const p = nextProb(v, n); if (p <= 0) continue;
+        const [nt, ns] = add(t, s, v);
+        if (nt > 21) { ev -= 2 * p; l += p; continue; }
+        c[v]--; const [a, b, d] = standWTL(nt, dealerDist(n - 1)); c[v]++;
+        ev += 2 * p * (a - d); w += p * a; tie += p * b; l += p * d;
+      }
+      return { ev, w, tie, l };
+    }
+    const me = data.me, [t, s] = handState(me), natural = me.length === 2 && t === 21;
+    const out = {}, dd0 = dealerDist(n0), need = needHole ? 2 : 1;
+    out.dealerBust = dd0[5]; out.dealerBlackjack = dd0[6];
+    if (natural) out.stand = { ev: st.payout * (1 - dd0[6]), win: 1 - dd0[6], tie: dd0[6], lose: 0 };
+    else { const [w, tie, l] = standWTL(t, dd0); out.stand = { ev: w - l, win: w, tie, lose: l }; }
+    if (t < 21 && n0 >= need) { const h = hit(t, s, n0); out.hit = { ev: h.ev, win: h.w, tie: h.tie, lose: h.l }; }
+    if (t < 21 && me.length === 2 && st.allowDouble && n0 >= need) { const d = dbl(t, s, n0); out.double = { ev: d.ev, win: d.w, tie: d.tie, lose: d.l }; }
+    if (me.length === 2 && V(me[0]) === V(me[1]) && st.allowSplit && n0 >= need + 1) {
+      /* Dos manos: cada una recibe una carta y sigue con la mejor jugada (sin volver a dividir). */
+      const pv = V(me[0]), [pt, ps] = add(0, 0, pv); memo.clear();
+      let ev = 0;
+      for (let v = 0; v < 10; v++) {
+        if (!c[v]) continue; const p = nextProb(v, n0); if (p <= 0) continue;
+        const [nt, ns] = add(pt, ps, v);
+        c[v]--; drawn[v]++;
+        let r;
+        if (pv === 0 && st.splitAcesOneCard) { const [a, , d] = standWTL(nt, dealerDist(n0 - 1)); r = a - d; }
+        else {
+          r = best(nt, ns, n0 - 1).ev;
+          if (st.doubleAfterSplit && st.allowDouble) { const d = dbl(nt, ns, n0 - 1); if (d.ev > r) r = d.ev; }
+        }
+        drawn[v]--; c[v]++;
+        ev += p * r;
+      }
+      out.split = { ev: 2 * ev };
+    }
+    return out;
+  }
+  return { analyze };
+})();
+if(typeof module!=='undefined')module.exports.BJX=BJX;
 </script><script>(() => {
 'use strict';
 const $=id=>document.getElementById(id);
@@ -805,25 +934,35 @@ function report(results,runner){const stand=results.stand;if(!stand)return;const
  const delta=$('delta');delta.className='change neutral';delta.textContent='';
  if(base!=null){const diff=(currentWin-base)*100;delta.textContent=(diff>=0?'▲ ':'▼ ')+(diff>=0?'+':'')+number(diff,1)+' pp';if(Math.abs(diff)>=0.05)delta.className='change '+(diff>0?'good':'bad');}
  $('mainHelp').textContent=hypothetical?'SIMULACIÓN · sin registrar': 'Estimación si te plantás';
- $('calcStatus').textContent=number(stand.n,0)+' simulaciones';
- $('confidence').textContent='Margen estadístico aprox. de ganar: ±'+number(stand.winMargin*100,1)+' puntos (95%). Las variaciones pequeñas pueden ser ruido de simulación.';
+ $('calcStatus').textContent=stand.exact?'Cálculo exacto':number(stand.n,0)+' simulaciones';
+ $('confidence').textContent=stand.exact?'Cálculo exacto sobre las cartas que quedan en el zapato: sin ruido de simulación.':'Margen estadístico aprox. de ganar: ±'+number(stand.winMargin*100,1)+' puntos (95%). Las variaciones pequeñas pueden ser ruido de simulación.';
  const entries=Object.entries(results).map(([key,v])=>({key,...v})).sort((a,b)=>b.ev-a.ev);
  const best=entries[0];$('recommend').textContent=entries.length>1?'Mayor EV: '+({stand:'PLANTARSE',hit:'PEDIR',double:'DOBLAR',split:'SEPARAR'}[best.key]):'Plantarse';
- const labels={stand:['Plantarse','Sin más cartas'],hit:['Pedir','Luego estrategia básica'],double:['Doblar','Una carta y finalizar'],split:['Separar','2 manos · EV total']};
+ const labels={stand:['Plantarse','Sin más cartas'],hit:['Pedir',stand.exact?'Luego la mejor jugada':'Luego estrategia básica'],double:['Doblar','Una carta y finalizar'],split:['Separar','2 manos · EV total']};
  const body=$('actionsBody');body.textContent='';
- const order=['stand','hit','double','split'];for(const key of order){const v=results[key];if(!v)continue;const tr=document.createElement('tr');if(key===best.key)tr.className='best';const first=document.createElement('td');const name=document.createElement('div');name.className='act-name';name.textContent=labels[key][0];if(key===best.key){const badge=document.createElement('span');badge.className='best-tag';badge.textContent='↑ EV';name.appendChild(badge);}const detail=document.createElement('div');detail.className='act-detail';detail.textContent=labels[key][1];first.append(name,detail);const p=document.createElement('td');p.textContent=pct(v.win);const ev=document.createElement('td');ev.textContent=signed(v.ev,3);ev.title='95%: ±'+number(v.evMargin,3)+' por unidad apostada';ev.style.color=v.ev>0?'#68e5bb':v.ev<0?'#ffabb1':'#f2f8fa';tr.append(first,p,ev);body.appendChild(tr);}
- const near=entries.length>1 && (best.ev-entries[1].ev)<Math.sqrt(best.evMargin**2+entries[1].evMargin**2);if(near)$('recommend').textContent='EV similares';$('quickBest').textContent=$('recommend').textContent;
+ const order=['stand','hit','double','split'];for(const key of order){const v=results[key];if(!v)continue;const tr=document.createElement('tr');if(key===best.key)tr.className='best';const first=document.createElement('td');const name=document.createElement('div');name.className='act-name';name.textContent=labels[key][0];if(key===best.key){const badge=document.createElement('span');badge.className='best-tag';badge.textContent='↑ EV';name.appendChild(badge);}const detail=document.createElement('div');detail.className='act-detail';detail.textContent=labels[key][1];first.append(name,detail);const p=document.createElement('td');p.textContent=pct(v.win);const ev=document.createElement('td');ev.textContent=signed(v.ev,3);ev.title=v.exact?'Valor exacto por unidad apostada':'95%: ±'+number(v.evMargin,3)+' por unidad apostada';ev.style.color=v.ev>0?'#68e5bb':v.ev<0?'#ffabb1':'#f2f8fa';tr.append(first,p,ev);body.appendChild(tr);}
+ const near=entries.length>1 && (best.ev-entries[1].ev)<(best.exact&&entries[1].exact?0.005:Math.max(0.005,Math.sqrt(best.evMargin**2+entries[1].evMargin**2)));if(near)$('recommend').textContent='EV similares';$('quickBest').textContent=$('recommend').textContent;
  // Action animation and recommendation text are synchronized in the coach panel.
  bmCoachReport(results,runner,entries,best,near);
  if(!hypothetical)lastRealWin=currentWin;
+}
+function exactResults(d,model){
+ const x=BJX.analyze(d),r={};
+ for(const a of model.actions){const v=x[a];if(!v)return null;
+  r[a]=a==='split'?{ev:v.ev}:{n:0,exact:true,win:v.win,tie:v.tie,lose:v.lose,ev:v.ev,evMargin:0,winMargin:0,dealerBust:x.dealerBust};}
+ return r;
 }
 function runCalculation(){if(activeTimer)clearTimeout(activeTimer);currentGeneration++;const gen=currentGeneration;const d=getModelData();let runner;try{runner=BJ.createRunner(d,state.settings.iterations);}catch(e){clearProbabilities('No es posible calcular: '+e.message);message('Revisá las cartas y cantidad de mazos.');return;}
  updateCount(runner.model);
  if(!runner.model.actions.length){clearProbabilities('Cargá al menos 2 cartas tuyas y una del crupier.');return;}
  if(BJ.score(d.me).total>21){clearProbabilities('Te pasaste de 21. La mano está perdida.');$('topWin').textContent='0,0%';$('topTie').textContent='0,0%';$('topLose').textContent='100,0%';$('quickBest').textContent='Mano perdida · pasaste de 21';setAvatar('failed','Te pasaste de 21 en esta mano.');return;}
+ /* V1.8: resultado exacto e inmediato. La simulación sólo queda para el % de ganar al dividir
+    (o como respaldo si el cálculo exacto falla). */
+ let exact=null;try{exact=exactResults(d,runner.model);}catch(_e){exact=null;}
+ if(exact&&!exact.split){report(exact,runner);return;}
  bmCoachLoading();$('calcStatus').textContent='Calculando…';$('mainHelp').textContent='Actualizando estimación…';$('quickBest').textContent='Calculando…';setAvatar('thinking','Analizando cartas y decisiones…');
  // Splitting computation over browser tasks keeps Safari responsive on phones.
- function tick(){if(currentGeneration!==gen)return;const more=runner.step(900);if(more){activeTimer=setTimeout(tick,0);}else{activeTimer=null;report(runner.results(),runner);}}
+ function tick(){if(currentGeneration!==gen)return;const more=runner.step(900);if(more){activeTimer=setTimeout(tick,0);}else{activeTimer=null;const res=runner.results();if(exact){for(const a of Object.keys(exact)){if(a==='split'){res.split.ev=exact.split.ev;res.split.evMargin=0;res.split.exact=true;}else res[a]=exact[a];}}report(res,runner);}}
  activeTimer=setTimeout(tick,0);
 }
 function updateSelected(t){if(t!=='me'&&t!=='dealer'&&!state.others[Number(t.slice(1))])return;state.selected=t;safeSave();renderHands();}
@@ -914,7 +1053,7 @@ function bmCoachLoading(){
 function bmCoachReport(results,runner,entries,best,near){
  bmCancelReveal();
  const coach=$('bmCoach');coach.dataset.action=best.key;
- const reason=near?'El EV de las mejores opciones es muy parecido; la diferencia podría ser ruido estadístico.':'Es la opción con mayor valor esperado estimado para esta mano.';
+ const reason=near?(best.exact?'Las dos mejores opciones rinden casi lo mismo: cualquiera de las dos está bien.':'El EV de las mejores opciones es muy parecido; la diferencia podría ser ruido estadístico.'):(best.exact?'Es la opción con mayor valor esperado, calculado sobre las cartas que quedan.':'Es la opción con mayor valor esperado estimado para esta mano.');
  const reveal=()=>{
   bmActionRevealTimer=null;coach.classList.remove('is-anticipating');coach.classList.add('is-revealed');
   $('bmAvatarCue').textContent=BM_CUE[best.key];

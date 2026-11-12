@@ -75,7 +75,7 @@ Sin internet, el OCR no funciona (el resto de la app sí). El propio panel lo av
 | Carga local | OK, 0 errores | OK, 0 errores |
 | Codificación | UTF-8 correcta | UTF-8 correcta |
 | Peticiones de red al abrir | 0 | 0 |
-| Botón «Ejemplo» | Carga mesa y calcula (PLANTARSE 21,3%) | PLANTARSE 21,3% |
+| Botón «Ejemplo» | Carga mesa y calcula (PEDIR CARTA 18,6%, cálculo exacto) | PEDIR CARTA 18,6% |
 | Panel OCR | no existe | lee A / K / 10 en la captura de referencia |
 | Modo PC (683 × 768) | no existe | sin scroll, carga y corrección (2026-11-07) |
 

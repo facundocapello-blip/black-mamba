@@ -27,8 +27,9 @@ URL: https://facundocapello-blip.github.io/black-mamba/
 ## Verificación
 1. HTTP 200 en la URL.
 2. Consola sin errores.
-3. El botón "Ejemplo" calcula (PLANTARSE 21,3%).
-4. Si se tocó el OCR, probarlo con una captura real.
+3. El botón "Ejemplo" calcula (PEDIR CARTA 18,6%, motor exacto; antes la simulación daba PLANTARSE 21,3%).
+4. `node qa/engine.mjs` pasa (motor exacto contra la simulación).
+5. Si se tocó el OCR, probarlo con una captura real.
 
 ---
 
