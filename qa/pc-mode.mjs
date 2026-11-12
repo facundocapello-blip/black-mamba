@@ -342,6 +342,56 @@ async function main() {
     await send('Emulation.setDeviceMetricsOverride', { width: 683, height: 768, deviceScaleFactor: 1, mobile: false });
     await key(' ', 'Space', 32, ' ');
 
+    // 7c. V1.8: ventana flotante (Document Picture-in-Picture).
+    check('existe el botón de ventana flotante', await evaluate(`!!document.getElementById('bmmPcFloat')`));
+    await evaluate(`void Object.defineProperty(window,'documentPictureInPicture',{value:undefined,configurable:true})`);
+    await evaluate(`document.getElementById('bmmPcFloat').click()`);
+    const fallbackHint = await evaluate(`document.getElementById('bmmPcHint').textContent`);
+    check('sin la API avisa que hace falta Chrome o Edge', /Chrome o Edge/.test(fallbackHint), fallbackHint);
+    await evaluate(`delete window.documentPictureInPicture`);
+    // Con una API simulada (iframe) se recorre la mudanza completa del panel y la vuelta.
+    await evaluate(`(()=>{const f=document.createElement('iframe');f.id='pipFake';f.style.cssText='position:fixed;right:0;top:0;width:390px;height:420px;z-index:99999;border:0';document.body.appendChild(f);void Object.defineProperty(window,'documentPictureInPicture',{value:{requestWindow:async()=>f.contentWindow},configurable:true});})()`);
+    await evaluate(`document.getElementById('bmmPcFloat').click()`);
+    let fakeFloated = false;
+    for (let i = 0; i < 15 && !(fakeFloated = await evaluate(`window.BMFloat.active()`)); i++) await new Promise((r) => setTimeout(r, 100));
+    check('el panel se muda a la ventana flotante', fakeFloated && await evaluate(`!document.getElementById('bmmPc') && !!window.__bmPipDoc.getElementById('bmmPc')`));
+    check('la pestaña queda libre mientras el panel flota', await evaluate(`document.body.style.overflow===''`));
+    await key('0', 'Digit0', 48, '0'); await key('7', 'Digit7', 55, '7'); await key('6', 'Digit6', 54, '6');
+    const floatDiag = await evaluate(`({dec:window.__bmPipDoc.getElementById('bmmPcDecision').textContent,me:[...document.querySelectorAll('#meHand .card-face:not(.fake):not(.virtual)')].map(e=>e.dataset.rank).join(','),dealer:[...document.querySelectorAll('#dealerHand .card-face:not(.fake):not(.virtual)')].map(e=>e.dataset.rank).join(','),hint:window.__bmPipDoc.getElementById('bmmPcHint').textContent,open:document.getElementById('bmmPc')===null})`);
+    check('flotando, el teclado sigue cargando cartas', floatDiag.dec === 'PEDIR CARTA', JSON.stringify(floatDiag));
+    await evaluate(`window.BMFloat.toggle()`);
+    await new Promise((r) => setTimeout(r, 200));
+    check('al volver, el panel está en la pestaña y abierto', await evaluate(`!!document.getElementById('bmmPc') && !window.BMFloat.active() && document.getElementById('bmmPc').classList.contains('open')`));
+    await key(' ', 'Space', 32, ' ');
+    await key('0', 'Digit0', 48, '0'); await key('7', 'Digit7', 55, '7'); await key('7', 'Digit7', 55, '7');
+    const backState = await pcState();
+    check('tras volver, 17 contra 7 se calcula normal', backState.decision === 'PLANTARSE', JSON.stringify(backState));
+    await key(' ', 'Space', 32, ' ');
+    await evaluate(`delete window.documentPictureInPicture`);
+    await evaluate(`document.getElementById('pipFake').remove()`);
+    if (await evaluate(`!!window.documentPictureInPicture`)) {
+      await evaluate(`document.getElementById('bmmPcFloat').focus()`);
+      await key('Enter', 'Enter', 13);
+      let floated = false;
+      for (let i = 0; i < 15 && !(floated = await evaluate(`window.BMFloat.active()`)); i++) await new Promise((r) => setTimeout(r, 100));
+      if (floated) {
+        check('el panel se muda a la ventana flotante', await evaluate(`!document.getElementById('bmmPc') && !!window.__bmPipDoc.getElementById('bmmPc')`));
+        check('la pestaña queda libre (sin overflow bloqueado)', await evaluate(`document.body.style.overflow===''`));
+        await evaluate(`window.BMFloat.toggle()`);
+        await new Promise((r) => setTimeout(r, 200));
+        check('al cerrar la flotante el panel vuelve a la pestaña', await evaluate(`!!document.getElementById('bmmPc') && !window.BMFloat.active() && document.getElementById('bmmPc').classList.contains('open')`));
+        await key('0', 'Digit0', 48, '0'); await key('6', 'Digit6', 54, '6'); await key('7', 'Digit7', 55, '7');
+        const afterFloat = await pcState();
+        check('el teclado sigue andando tras volver', afterFloat.decision === 'PEDIR CARTA', JSON.stringify(afterFloat));
+        await key(' ', 'Space', 32, ' ');
+      } else {
+        const hint = await evaluate(`document.getElementById('bmmPcHint').textContent`);
+        check('flotante no disponible en este entorno: el panel avisa y sigue', /No se pudo abrir/.test(hint) && await evaluate(`!!document.getElementById('bmmPc')`), hint);
+      }
+    } else {
+      check('este navegador no expone la API flotante: fallback ya probado', true);
+    }
+
     // 8. Cerrar el modo PC y comprobar que la app sigue funcionando.
     await evaluate('document.getElementById("bmmPcClose")?.click()');
     check('el modo PC cierra', await evaluate('!document.getElementById("bmmPc")?.classList.contains("open")'));

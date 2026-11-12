@@ -27,6 +27,7 @@ Actualizado: 2026-11-08
 - Límites conocidos del lector: plantillas hechas con 18 capturas (pocas manos distintas); el «9» es provisional (un 6 girado) y hay un solo ejemplo de 4, 5 y 10; del globo faltan los dígitos 4, 5 y 9 (esos totales quedan sin verificar); totales blandos «8/18» no se verifican; manos divididas no se leen; las cartas que saca el crupier al final no se cargan al conteo. **La captura de pantalla real (`getDisplayMedia`) no se pudo probar sin navegador con pantalla.**
 - Pruebas: `node qa/vision.mjs` (recortes en `qa/fixtures/ilimitado/`: sólo globo y cartas sobre fondo liso, sin datos personales) y casos nuevos en `qa/engine.mjs`.
 - Falta: publicar (mergear a `main`) y verificar en vivo.
+- **Ventana flotante (12/11):** el botón 🗖 del modo PC muda el panel a una mini ventana que queda encima de cualquier app (Document Picture-in-Picture, Chrome/Edge 116+). Betano puede ir a pantalla completa y el panel sigue a la vista. Teclas y «Leer mesa» funcionan igual ahí; ⬒ o Esc lo devuelven a la pestaña. Sin la API, avisa y el panel sigue en la pestaña. `qa/pc-mode.mjs` lo cubre con una API simulada (64 chequeos); **falta probar la ventana real en Edge/Chrome con pantalla.**
 
 ## Abierto
 - Modo PC: se prepararon ajustes para mantener el foco con Tab y desactivar la simulación al abrir; verificados localmente con `node qa/pc-mode.mjs`.
