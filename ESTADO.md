@@ -16,6 +16,10 @@ Actualizado: 2026-11-08
 - Motivo: con 20.000 simulaciones, 6 de 550 manos iniciales daban una recomendación distinta a la exacta (p. ej. 7+7 contra 8 decía DIVIDIR). Además, sin peek, la simulación doblaba tras dividir sólo cuando el crupier no tenía blackjack (sesgo optimista).
 - **Cambia el botón «Ejemplo»**: ahora da PEDIR CARTA 18,6 % (antes PLANTARSE 21,3 %). Diferencia de EV 0,003: sale con la etiqueta «EV PARECIDOS».
 - Prueba nueva: `node qa/engine.mjs` (sin navegador). `qa/pc-mode.mjs` actualizado al nuevo ejemplo.
+- Modo PC más rápido (mismo día): la jugada sale al instante, sin «UN MOMENTO…» (también al dividir; el % de ganar al dividir se completa después). Fondo por acción: verde plantarse, rojo pedir, amarillo doblar, azul dividir. Guía «Si sale…» con qué hacer según la próxima carta cuando toca pedir.
+- Teclado en modo PC: Espacio = nueva mano, Retroceso/Supr = borrar la última carta (pedidas → tu 2ª → crupier → tu 1ª). Espacio ya no activa el botón con foco; Enter sí.
+- En el tablero cambió el color del texto de la jugada para coincidir: pedir en rojo, dividir en azul.
+- `qa/pc-mode.mjs` suma 13 chequeos para todo esto (683 × 768 y 500 × 700 sin scroll).
 - Falta: publicar (mergear a `main`) y verificar en vivo.
 
 ## Abierto

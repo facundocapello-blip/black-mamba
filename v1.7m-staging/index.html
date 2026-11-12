@@ -248,10 +248,10 @@
 .bm-coach.is-anticipating .bm-avatar-stage{animation:bmAvatarAttention .58s ease-out both;border-color:#80e4b780}
 .bm-coach.is-anticipating .bm-decision{opacity:.6}
 .bm-coach.is-revealed .bm-decision{animation:bmDecisionReveal .34s cubic-bezier(.18,.78,.25,1.1) both}
-.bm-coach[data-action="hit"] .bm-decision{color:#8ce1ff}
+.bm-coach[data-action="hit"] .bm-decision{color:#ff9d9d}
 .bm-coach[data-action="double"] .bm-decision{color:#ffe09a}
 .bm-coach[data-action="stand"] .bm-decision{color:#a7f8cc}
-.bm-coach[data-action="split"] .bm-decision{color:#d8c5ff}
+.bm-coach[data-action="split"] .bm-decision{color:#8ccbff}
 .bm-coach .bm-metrics{position:relative}
 .bm-coach .bm-coach-flag{flex:none}
 @keyframes bmAvatarAttention{0%{transform:translateY(4px);filter:brightness(.82)}55%{transform:translateY(-3px);filter:brightness(1.18)}100%{transform:translateY(0);filter:brightness(1)}}
@@ -437,6 +437,17 @@
 .bmpc-flag{font-size:9px;font-weight:800;letter-spacing:.08em;color:#9fe8c9;border:1px solid #3f8d72;border-radius:999px;padding:3px 7px;white-space:nowrap}
 .bmpc-metrics{display:flex;gap:14px;margin-top:5px;font-size:10px;color:#a9d5c8}
 .bmpc-metrics b{font-size:15px;color:#eafff6}
+.bmpc-coach[data-action]{border-width:2px}
+.bmpc-coach[data-action="stand"]{background:#0f5a3a;border-color:#4fe0a0}
+.bmpc-coach[data-action="hit"]{background:#7a1f28;border-color:#ff8a8f}
+.bmpc-coach[data-action="double"]{background:#6b5208;border-color:#ffd65c}
+.bmpc-coach[data-action="split"]{background:#173f7a;border-color:#7fb6ff}
+.bmpc-coach[data-action] .bmpc-flag{color:#fff;border-color:rgba(255,255,255,.55);background:rgba(0,0,0,.28)}
+.bmpc-coach[data-action] .bmpc-metrics{color:#e6f4ef}
+.bmpc-coach[data-action] .bmpc-coach-top strong{font-size:27px}
+.bmpc-next{margin-top:6px;font-size:13px;font-weight:700;line-height:1.35;color:#fff;min-height:16px}
+.bmpc-next b{font-weight:800}
+.bmpc-next:empty{display:none}
 .bmpc-slots{flex:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
 .bmpc-slot{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;min-height:58px;justify-content:center;border:1px solid #3d6b64;border-radius:11px;background:#0f2833;color:#cfe9e2;padding:5px 3px}
 .bmpc-slot span{font-size:9px;letter-spacing:.04em;color:#9dc2b9;white-space:nowrap}
@@ -762,11 +773,11 @@ const BJX = (() => {
       const key = drawn.join(','); let res = memo.get(key); if (res) return res;
       const cannotBust = t <= 11;
       const mustStand = t >= 21 || (s === 0 && t >= 18) || (s > 0 && t >= 20) || n < 2;
-      if (cannotBust && !mustStand) res = hit(t, s, n);
+      if (cannotBust && !mustStand) { res = hit(t, s, n); res.act = 'hit'; }
       else {
         const [w, tie, l] = standWTL(t, dealerDist(n));
-        res = { ev: w - l, w, tie, l };
-        if (!mustStand) { const h = hit(t, s, n); if (h.ev > res.ev) res = h; }
+        res = { ev: w - l, w, tie, l, act: 'stand' };
+        if (!mustStand) { const h = hit(t, s, n); if (h.ev > res.ev) { res = h; res.act = 'hit'; } }
       }
       memo.set(key, res); return res;
     }
@@ -797,7 +808,18 @@ const BJX = (() => {
     out.dealerBust = dd0[5]; out.dealerBlackjack = dd0[6];
     if (natural) out.stand = { ev: st.payout * (1 - dd0[6]), win: 1 - dd0[6], tie: dd0[6], lose: 0 };
     else { const [w, tie, l] = standWTL(t, dd0); out.stand = { ev: w - l, win: w, tie, lose: l }; }
-    if (t < 21 && n0 >= need) { const h = hit(t, s, n0); out.hit = { ev: h.ev, win: h.w, tie: h.tie, lose: h.l }; }
+    if (t < 21 && n0 >= need) {
+      const h = hit(t, s, n0); out.hit = { ev: h.ev, win: h.w, tie: h.tie, lose: h.l };
+      /* Qué conviene después de cada carta posible (A, 2…9, 10/figura). */
+      out.next = [];
+      for (let v = 0; v < 10; v++) {
+        if (!c[v]) { out.next.push(null); continue; }
+        const [nt, ns] = add(t, s, v);
+        if (nt > 21) { out.next.push({ total: nt, act: 'bust' }); continue; }
+        c[v]--; drawn[v]++; const r = best(nt, ns, n0 - 1); drawn[v]--; c[v]++;
+        out.next.push({ total: nt, act: nt === 21 ? 'stand' : r.act });
+      }
+    }
     if (t < 21 && me.length === 2 && st.allowDouble && n0 >= need) { const d = dbl(t, s, n0); out.double = { ev: d.ev, win: d.w, tie: d.tie, lose: d.l }; }
     if (me.length === 2 && V(me[0]) === V(me[1]) && st.allowSplit && n0 >= need + 1) {
       /* Dos manos: cada una recibe una carta y sigue con la mejor jugada (sin volver a dividir). */
@@ -923,9 +945,9 @@ function renderHands(){
 }
 function renderLog(){const el=$('log');el.textContent='';if(!state.log.length){el.innerHTML='<li>Sin cartas registradas.</li>';return;}for(const entry of state.log.slice(0,7)){const li=document.createElement('li');const strong=document.createElement('strong');strong.textContent=entry.txt;const time=document.createElement('span');time.className='timestamp';time.textContent=entry.time||'';li.append(strong,time);el.appendChild(li);}}
 function render(){renderHands();renderLog();}
-function clearProbabilities(label){bmCoachEmpty();$('quickBest').textContent='Cargá tus cartas';$('topWin').textContent='—';$('topTie').textContent='—';$('topLose').textContent='—';$('delta').textContent='';$('barWin').textContent='—';$('barTie').textContent='—';$('barLose').textContent='—';$('dealerBust').textContent='—';$('nextBust').textContent='—';$('outcomeBar').children[0].style.width='0%';$('outcomeBar').children[1].style.width='0%';$('outcomeBar').children[2].style.width='0%';$('actionsBody').innerHTML='<tr><td colspan="3" class="muted">'+label+'</td></tr>';$('calcStatus').textContent='Sin datos';$('mainHelp').textContent='Cargá tu mano y el crupier';$('confidence').textContent='Registrá al menos 2 cartas tuyas y la carta visible del crupier para calcular.';$('recommend').textContent='—';setAvatar('idle',state.openingFlow?'Tocá tu primera carta, luego la del crupier y luego tu segunda.':'Cargá tu mano y la carta visible del crupier.');}
+function clearProbabilities(label){window.BMLast=null;document.dispatchEvent(new CustomEvent('bm:report'));bmCoachEmpty();$('quickBest').textContent='Cargá tus cartas';$('topWin').textContent='—';$('topTie').textContent='—';$('topLose').textContent='—';$('delta').textContent='';$('barWin').textContent='—';$('barTie').textContent='—';$('barLose').textContent='—';$('dealerBust').textContent='—';$('nextBust').textContent='—';$('outcomeBar').children[0].style.width='0%';$('outcomeBar').children[1].style.width='0%';$('outcomeBar').children[2].style.width='0%';$('actionsBody').innerHTML='<tr><td colspan="3" class="muted">'+label+'</td></tr>';$('calcStatus').textContent='Sin datos';$('mainHelp').textContent='Cargá tu mano y el crupier';$('confidence').textContent='Registrá al menos 2 cartas tuyas y la carta visible del crupier para calcular.';$('recommend').textContent='—';setAvatar('idle',state.openingFlow?'Tocá tu primera carta, luego la del crupier y luego tu segunda.':'Cargá tu mano y la carta visible del crupier.');}
 function updateCount(model){$('running').textContent=signed(model.running,0);$('trueCount').textContent=signed(model.trueCount,1);$('cardAvailability').textContent=model.available+' disponibles';}
-function report(results,runner){const stand=results.stand;if(!stand)return;const s=runner.model;const currentWin=stand.win;
+function report(results,runner,quiet=false){const stand=results.stand;if(!stand)return;const s=runner.model;const currentWin=stand.win;
  $('topWin').textContent=pct(stand.win);$('topTie').textContent=pct(stand.tie);$('topLose').textContent=pct(stand.lose);
  $('barWin').textContent=pct(stand.win);$('barTie').textContent=pct(stand.tie);$('barLose').textContent=pct(stand.lose);
  const bar=$('outcomeBar').children;bar[0].style.width=stand.win*100+'%';bar[1].style.width=stand.tie*100+'%';bar[2].style.width=stand.lose*100+'%';
@@ -943,13 +965,16 @@ function report(results,runner){const stand=results.stand;if(!stand)return;const
  const order=['stand','hit','double','split'];for(const key of order){const v=results[key];if(!v)continue;const tr=document.createElement('tr');if(key===best.key)tr.className='best';const first=document.createElement('td');const name=document.createElement('div');name.className='act-name';name.textContent=labels[key][0];if(key===best.key){const badge=document.createElement('span');badge.className='best-tag';badge.textContent='↑ EV';name.appendChild(badge);}const detail=document.createElement('div');detail.className='act-detail';detail.textContent=labels[key][1];first.append(name,detail);const p=document.createElement('td');p.textContent=pct(v.win);const ev=document.createElement('td');ev.textContent=signed(v.ev,3);ev.title=v.exact?'Valor exacto por unidad apostada':'95%: ±'+number(v.evMargin,3)+' por unidad apostada';ev.style.color=v.ev>0?'#68e5bb':v.ev<0?'#ffabb1':'#f2f8fa';tr.append(first,p,ev);body.appendChild(tr);}
  const near=entries.length>1 && (best.ev-entries[1].ev)<(best.exact&&entries[1].exact?0.005:Math.max(0.005,Math.sqrt(best.evMargin**2+entries[1].evMargin**2)));if(near)$('recommend').textContent='EV similares';$('quickBest').textContent=$('recommend').textContent;
  // Action animation and recommendation text are synchronized in the coach panel.
- bmCoachReport(results,runner,entries,best,near);
+ bmCoachReport(results,runner,entries,best,near,quiet);
+ window.BMLast={action:best.key,near,next:best.key==='hit'&&results.hit?results.hit.next||null:null};
+ document.dispatchEvent(new CustomEvent('bm:report'));
  if(!hypothetical)lastRealWin=currentWin;
 }
 function exactResults(d,model){
  const x=BJX.analyze(d),r={};
  for(const a of model.actions){const v=x[a];if(!v)return null;
-  r[a]=a==='split'?{ev:v.ev}:{n:0,exact:true,win:v.win,tie:v.tie,lose:v.lose,ev:v.ev,evMargin:0,winMargin:0,dealerBust:x.dealerBust};}
+  r[a]=a==='split'?{n:0,exact:true,win:null,tie:null,lose:null,ev:v.ev,evMargin:0,winMargin:0,dealerBust:x.dealerBust}:{n:0,exact:true,win:v.win,tie:v.tie,lose:v.lose,ev:v.ev,evMargin:0,winMargin:0,dealerBust:x.dealerBust};}
+ if(r.hit&&x.next)r.hit.next=x.next;
  return r;
 }
 function runCalculation(){if(activeTimer)clearTimeout(activeTimer);currentGeneration++;const gen=currentGeneration;const d=getModelData();let runner;try{runner=BJ.createRunner(d,state.settings.iterations);}catch(e){clearProbabilities('No es posible calcular: '+e.message);message('Revisá las cartas y cantidad de mazos.');return;}
@@ -959,10 +984,10 @@ function runCalculation(){if(activeTimer)clearTimeout(activeTimer);currentGenera
  /* V1.8: resultado exacto e inmediato. La simulación sólo queda para el % de ganar al dividir
     (o como respaldo si el cálculo exacto falla). */
  let exact=null;try{exact=exactResults(d,runner.model);}catch(_e){exact=null;}
- if(exact&&!exact.split){report(exact,runner);return;}
- bmCoachLoading();$('calcStatus').textContent='Calculando…';$('mainHelp').textContent='Actualizando estimación…';$('quickBest').textContent='Calculando…';setAvatar('thinking','Analizando cartas y decisiones…');
+ if(exact){report(exact,runner);if(!exact.split)return;}
+ else{bmCoachLoading();$('calcStatus').textContent='Calculando…';$('mainHelp').textContent='Actualizando estimación…';$('quickBest').textContent='Calculando…';setAvatar('thinking','Analizando cartas y decisiones…');}
  // Splitting computation over browser tasks keeps Safari responsive on phones.
- function tick(){if(currentGeneration!==gen)return;const more=runner.step(900);if(more){activeTimer=setTimeout(tick,0);}else{activeTimer=null;const res=runner.results();if(exact){for(const a of Object.keys(exact)){if(a==='split'){res.split.ev=exact.split.ev;res.split.evMargin=0;res.split.exact=true;}else res[a]=exact[a];}}report(res,runner);}}
+ function tick(){if(currentGeneration!==gen)return;const more=runner.step(900);if(more){activeTimer=setTimeout(tick,0);}else{activeTimer=null;const res=runner.results();if(exact){for(const a of Object.keys(exact)){if(a==='split'){res.split.ev=exact.split.ev;res.split.evMargin=0;res.split.exact=true;}else res[a]=exact[a];}}report(res,runner,!!exact);}}
  activeTimer=setTimeout(tick,0);
 }
 function updateSelected(t){if(t!=='me'&&t!=='dealer'&&!state.others[Number(t.slice(1))])return;state.selected=t;safeSave();renderHands();}
@@ -1050,7 +1075,7 @@ function bmCoachLoading(){
  $('bmBestWin').textContent='—';$('bmBustRisk').textContent='—';$('bmWin').textContent='';
  bmCoachSet('CALCULANDO…','Actualizando el valor esperado de las jugadas disponibles.','ANALIZANDO','bm-wait');
 }
-function bmCoachReport(results,runner,entries,best,near){
+function bmCoachReport(results,runner,entries,best,near,quiet=false){
  bmCancelReveal();
  const coach=$('bmCoach');coach.dataset.action=best.key;
  const reason=near?(best.exact?'Las dos mejores opciones rinden casi lo mismo: cualquiera de las dos está bien.':'El EV de las mejores opciones es muy parecido; la diferencia podría ser ruido estadístico.'):(best.exact?'Es la opción con mayor valor esperado, calculado sobre las cartas que quedan.':'Es la opción con mayor valor esperado estimado para esta mano.');
@@ -1061,11 +1086,16 @@ function bmCoachReport(results,runner,entries,best,near){
  };
  // A short action-specific animation runs before revealing the recommendation.
  // Respect reduced-motion preference and cancel stale reveals when cards change.
- bmCoachSet('UN MOMENTO…','Tu avatar está preparando la recomendación.','DECIDIENDO','bm-wait');
- coach.classList.add('is-anticipating');
- $('bmAvatarCue').textContent='···';
- setAvatar(BM_MOTION[best.key],BM_MOTION_CAPTION[best.key],1400);
- if(avatarReduceMotion)reveal();else bmActionRevealTimer=setTimeout(reveal,680);
+ /* En modo PC (y al completar datos de una jugada ya mostrada) la jugada sale sin espera. */
+ const instant=quiet||avatarReduceMotion||!!$('bmmPc')?.classList.contains('open');
+ if(instant){if(!quiet)setAvatar(BM_MOTION[best.key],BM_MOTION_CAPTION[best.key],1400);reveal();}
+ else{
+  bmCoachSet('UN MOMENTO…','Tu avatar está preparando la recomendación.','DECIDIENDO','bm-wait');
+  coach.classList.add('is-anticipating');
+  $('bmAvatarCue').textContent='···';
+  setAvatar(BM_MOTION[best.key],BM_MOTION_CAPTION[best.key],1400);
+  bmActionRevealTimer=setTimeout(reveal,680);
+ }
  $('bmBestWin').textContent=pct(best.win);$('bmBustRisk').textContent=pct(runner.model.nextBust);
  $('bmWin').textContent='';
  $('bmOptions').textContent='';
@@ -1146,11 +1176,12 @@ setupControls();render();runCalculation();
 </section>
 
 <section class="bmpc" id="bmmPc" role="dialog" aria-modal="true" aria-label="Modo PC compacto">
- <header class="bmpc-head"><div><strong>♠ BLACK MAMBA · PC</strong><small>Carga rápida junto a Betano · sin scroll</small></div><button type="button" class="bmpc-close" id="bmmPcClose">✕ Volver</button></header>
+ <header class="bmpc-head"><div><strong>♠ BLACK MAMBA · PC</strong><small>Teclas: A · 2–9 · 0 = 10 · J Q K · Espacio = nueva mano · Retroceso = borrar</small></div><button type="button" class="bmpc-close" id="bmmPcClose">✕ Volver</button></header>
  <div class="bmpc-body" id="bmmPcBody">
   <section class="bmpc-coach" aria-live="polite">
    <div class="bmpc-coach-top"><strong id="bmmPcDecision">CARGÁ CARTAS</strong><span class="bmpc-flag" id="bmmPcFlag">SIN CARTAS</span></div>
    <div class="bmpc-metrics"><span>Ganar con esta acción <b id="bmmPcWin">—</b></span><span>Pasarte al pedir <b id="bmmPcBust">—</b></span></div>
+   <div class="bmpc-next" id="bmmPcNext"></div>
   </section>
   <section class="bmpc-slots" id="bmmPcSlots" aria-label="Cartas cargadas. Tocá una casilla para corregirla">
    <button type="button" class="bmpc-slot" data-pc-slot="me0" data-filled="false"><span>TU 1ª</span><strong>—</strong></button>
@@ -1161,7 +1192,7 @@ setupControls();render();runCalculation();
   <div class="bmpc-hint" id="bmmPcHint">Tocá el valor de tu primera carta.</div>
   <div class="bmpc-ranks" id="bmmPcRanks" aria-label="Valores de las cartas"></div>
  </div>
- <footer class="bmpc-foot"><button type="button" id="bmmPcNewHand">↻ Nueva mano</button></footer>
+ <footer class="bmpc-foot"><button type="button" id="bmmPcNewHand">↻ Nueva mano · Espacio</button></footer>
 </section>
 
 <script>
@@ -1264,7 +1295,23 @@ setupControls();render();runCalculation();
   syncCoach();
  }
  function setText(id,value){const el=$(id);if(el&&el.textContent!==value)el.textContent=value;}
+ const NEXT_LABEL=['A','2','3','4','5','6','7','8','9','10–K'];
+ const NEXT_TEXT={hit:'pedí otra',stand:'plantate',bust:'te pasás'};
+ /* «Si sale…»: agrupa las cartas posibles según lo que conviene hacer después. */
+ function nextText(){
+  const last=window.BMLast;if(!last||last.action!=='hit'||!last.next)return '';
+  const groups=[];
+  last.next.forEach((n,i)=>{
+   if(!n)return;const g=groups[groups.length-1];
+   if(g&&g.act===n.act&&g.to===i-1)g.to=i;else groups.push({act:n.act,from:i,to:i});
+  });
+  const name=g=>g.from===g.to?NEXT_LABEL[g.from]:NEXT_LABEL[g.from]+'–'+(g.to===9?'K':NEXT_LABEL[g.to]);
+  return 'Si sale '+groups.map(g=>name(g)+' → '+NEXT_TEXT[g.act]).join(' · ');
+ }
  function syncCoach(){
+  const coachBox=document.querySelector('#bmmPc .bmpc-coach'),act=window.BMLast&&$('bmCoach').dataset.action?window.BMLast.action:'';
+  if(coachBox){if(act){if(coachBox.dataset.action!==act)coachBox.dataset.action=act;}else if(coachBox.dataset.action)coachBox.removeAttribute('data-action');}
+  setText('bmmPcNext',nextText());
   setText('bmmPcDecision',$('bmDecision').textContent);
   const flag=$('bmCoachFlag');setText('bmmPcFlag',flag.textContent);
   const flagClass='bmpc-flag '+(flag.className||'');
@@ -1313,6 +1360,17 @@ setupControls();render();runCalculation();
   seat(target==='dealer'?'dealer':'me');
   paint();
  }
+ /* Retroceso: borra la última carta cargada (pedidas → tu 2ª → crupier → tu 1ª). */
+ function removeLast(){
+  pendingInsert=null;
+  const me=meEl().length,dealer=dealerEl().length;
+  const pick=me>2?['me',me-1]:me===2?['me',1]:dealer>0?['dealer',dealer-1]:me===1?['me',0]:null;
+  if(!pick){$('bmmPcHint').textContent='No hay cartas para borrar.';return;}
+  const btn=document.querySelector('[data-remove-target="'+pick[0]+'"][data-remove-index="'+pick[1]+'"]');
+  if(btn)btn.click();
+  paint();
+ }
+ function newHand(){pendingInsert=null;$('newHandBtn').click();paint();}
  function open(){
   lastFocus=document.activeElement;
   if(!lastFocus||lastFocus===document.body)lastFocus=$('bmmPcToggle');
@@ -1335,7 +1393,8 @@ setupControls();render();runCalculation();
  ranksBox.innerHTML=RANKS.map(r=>'<button type="button" class="bmpc-rank" data-pc-rank="'+r+'" aria-label="Carta '+r+'">'+r+'</button>').join('');
  ranksBox.addEventListener('click',e=>{const b=e.target.closest('[data-pc-rank]');if(b)addRank(b.dataset.pcRank);});
  $('bmmPcSlots').addEventListener('click',e=>{const b=e.target.closest('[data-pc-slot]');if(b)removeSlot(b.dataset.pcSlot);});
- $('bmmPcNewHand').addEventListener('click',()=>{pendingInsert=null;$('newHandBtn').click();paint();});
+ $('bmmPcNewHand').addEventListener('click',newHand);
+ document.addEventListener('bm:report',()=>{if(pc.classList.contains('open'))syncCoach();});
  $('bmmPcClose').addEventListener('click',close);
  $('bmmPcToggle').addEventListener('click',open);
  document.addEventListener('keydown',e=>{
@@ -1350,9 +1409,13 @@ setupControls();render();runCalculation();
    if(!e.shiftKey&&active===last){e.preventDefault();first.focus();}
    return;
   }
+  if(e.key===' '||e.code==='Space'){e.preventDefault();if(!e.repeat)newHand();return;}
+  if(e.key==='Backspace'||e.key==='Delete'){e.preventDefault();if(!e.repeat)removeLast();return;}
   const key=e.key.toUpperCase(),rank=key==='0'?'10':key;
   if(key.length===1&&RANKS.includes(rank)){e.preventDefault();addRank(rank);}
  });
+ /* Espacio es «nueva mano»: que no active además el botón que tenga el foco. */
+ document.addEventListener('keyup',e=>{if(pc.classList.contains('open')&&(e.key===' '||e.code==='Space')&&!e.target.closest('input,select'))e.preventDefault();});
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&pc.classList.contains('open'))close();});
  window.addEventListener('beforeunload',()=>{if(ticker)clearInterval(ticker);});
  paint();

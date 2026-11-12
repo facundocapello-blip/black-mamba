@@ -295,6 +295,53 @@ async function main() {
     check('nueva mano conserva las cartas gastadas', Number(afterNew.spent) > Number(before.spent), `${before.spent} -> ${afterNew.spent}`);
     check('nueva mano limpia las casillas', afterNew.slots.every((v) => !v), afterNew.slots.join(','));
 
+    // 7b. V1.8: mano completa sólo con teclado, jugada inmediata, color y guía «Si sale…».
+    const key = async (k, code, vk, text) => {
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, ...(text ? { text } : {}) });
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk });
+    };
+    const pcState = () => evaluate(`({
+      me: [...document.querySelectorAll('#meHand .card-face:not(.fake):not(.virtual)')].map(e => e.dataset.rank).join(','),
+      dealer: [...document.querySelectorAll('#dealerHand .card-face:not(.fake):not(.virtual)')].map(e => e.dataset.rank).join(','),
+      decision: document.getElementById('bmmPcDecision').textContent,
+      action: document.querySelector('#bmmPc .bmpc-coach').dataset.action || '',
+      next: document.getElementById('bmmPcNext').textContent,
+      bg: getComputedStyle(document.querySelector('#bmmPc .bmpc-coach')).backgroundColor,
+      scroll: document.getElementById('bmmPcBody').scrollHeight <= document.getElementById('bmmPcBody').clientHeight + 1,
+    })`);
+    await key('0', 'Digit0', 48, '0'); await key('7', 'Digit7', 55, '7'); await key('6', 'Digit6', 54, '6');
+    const hitNow = await pcState(); // sin esperar: la jugada tiene que estar ya
+    check('16 contra 7 con tres teclas', hitNow.me === '10,6' && hitNow.dealer === '7', JSON.stringify(hitNow));
+    check('la jugada sale al instante (sin «UN MOMENTO»)', hitNow.decision === 'PEDIR CARTA', hitNow.decision);
+    check('pedir se pinta de rojo', hitNow.action === 'hit' && hitNow.bg === 'rgb(122, 31, 40)', `${hitNow.action} ${hitNow.bg}`);
+    check('la guía dice qué hacer con la próxima carta', hitNow.next === 'Si sale A–5 → plantate · 6–K → te pasás', hitNow.next);
+    check('la guía no agrega scroll', hitNow.scroll);
+    await key('Backspace', 'Backspace', 8);
+    const erased = await pcState();
+    check('Retroceso borra la última carta', erased.me === '10' && erased.dealer === '7' && erased.action === '' && erased.next === '', JSON.stringify(erased));
+    await key('k', 'KeyK', 75, 'k');
+    const standNow = await pcState();
+    check('20 contra 7: plantarse en verde y sin guía', standNow.decision === 'PLANTARSE' && standNow.action === 'stand' && standNow.bg === 'rgb(15, 90, 58)' && standNow.next === '', JSON.stringify(standNow));
+    await key(' ', 'Space', 32, ' ');
+    const spaced = await pcState();
+    check('Espacio arranca una mano nueva', spaced.me === '' && spaced.dealer === '' && spaced.action === '', JSON.stringify(spaced));
+    await key('8', 'Digit8', 56, '8'); await key('6', 'Digit6', 54, '6'); await key('8', 'Digit8', 56, '8');
+    const splitNow = await pcState();
+    check('8+8 contra 6: dividir en azul, al instante', splitNow.decision === 'DIVIDIR' && splitNow.action === 'split' && splitNow.bg === 'rgb(23, 63, 122)', JSON.stringify(splitNow));
+    await key(' ', 'Space', 32, ' ');
+    await key('6', 'Digit6', 54, '6'); await key('5', 'Digit5', 53, '5'); await key('5', 'Digit5', 53, '5');
+    const doubleNow = await pcState();
+    check('11 contra 5: doblar en amarillo', doubleNow.decision === 'DOBLAR' && doubleNow.action === 'double' && doubleNow.bg === 'rgb(107, 82, 8)', JSON.stringify(doubleNow));
+    await key(' ', 'Space', 32, ' ');
+    await key('2', 'Digit2', 50, '2'); await key('0', 'Digit0', 48, '0'); await key('3', 'Digit3', 51, '3');
+    const lowNow = await pcState();
+    check('5 contra 10: la guía agrupa varias jugadas', lowNow.decision === 'PEDIR CARTA' && /pedí otra/.test(lowNow.next) && lowNow.scroll, JSON.stringify(lowNow));
+    await send('Emulation.setDeviceMetricsOverride', { width: 500, height: 700, deviceScaleFactor: 1, mobile: false });
+    const lowSmall = await pcState();
+    check('a 500 × 700 la guía entra sin scroll', lowSmall.scroll && await evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'), JSON.stringify(lowSmall));
+    await send('Emulation.setDeviceMetricsOverride', { width: 683, height: 768, deviceScaleFactor: 1, mobile: false });
+    await key(' ', 'Space', 32, ' ');
+
     // 8. Cerrar el modo PC y comprobar que la app sigue funcionando.
     await evaluate('document.getElementById("bmmPcClose")?.click()');
     check('el modo PC cierra', await evaluate('!document.getElementById("bmmPc")?.classList.contains("open")'));
