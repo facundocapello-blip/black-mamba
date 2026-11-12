@@ -455,6 +455,10 @@
 .bmpc-slot[data-filled="true"]{border-color:#48c69c;background:#134034}
 .bmpc-slot[data-filled="true"] span{color:#a8f0d3}
 .bmpc-slot[hidden]{display:none}
+.bmpc-live{flex:none;font-size:12px;line-height:1.3;font-weight:700;color:#a8d9ce;padding:4px 12px}
+.bmpc-live:empty{display:none}
+.bmpc-live[data-kind="ok"]{color:#7ff0b4}
+.bmpc-live[data-kind="doubt"]{color:#ffd65c}
 .bmpc-hint{flex:none;font-size:11px;color:#a8d9ce;min-height:15px;line-height:1.3}
 .bmpc-ranks{flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:minmax(48px,1fr);gap:7px}
 .bmpc-rank{min-width:0;border:1px solid #487a75;border-radius:12px;background:#21434d;color:#fff;font-weight:800;font-size:24px;touch-action:manipulation}
@@ -534,16 +538,19 @@
  <div class="bottom-tip">Simulación estadística, no predicción. Los resultados no garantizan ganancias. Funciona sin conexión ni envío de datos.</div>
 </div>
 <div class="modal-backdrop" id="settingsModal" role="presentation"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle"><div class="modal-head"><h2 id="settingsTitle">Configuración de mesa</h2><button class="btn tiny" id="settingsClose" aria-label="Cerrar">✕</button></div><div class="modal-body">
+ <button class="btn" type="button" id="presetIlimitado" style="width:100%;margin-bottom:14px">Usar reglas de «Blackjack Ilimitado» (Betano)</button>
  <div class="field"><label for="decks">Cantidad de mazos</label><select id="decks"><option value="1">1 mazo (52 cartas)</option><option value="2">2 mazos</option><option value="4">4 mazos</option><option value="6">6 mazos · habitual</option><option value="8">8 mazos</option></select></div>
  <div class="field"><label for="playerCount">Otros jugadores visibles</label><select id="playerCount"><option value="0">Sin jugadores adicionales</option><option value="1">1 jugador</option><option value="2">2 jugadores</option><option value="3">3 jugadores</option><option value="4">4 jugadores</option><option value="5">5 jugadores</option><option value="6">6 jugadores</option><option value="7">7 jugadores</option></select></div>
  <div class="field"><label for="precision">Precisión de la estimación</label><select id="precision"><option value="5000">Rápida · 5.000 muestras/acción</option><option value="20000">Equilibrada · 20.000 muestras/acción</option><option value="60000">Alta · 60.000 muestras/acción</option></select></div>
  <label class="option"><span>Crupier pide con 17 blando <span class="info">H17 (desactivado: S17)</span></span><input type="checkbox" id="h17"></label>
  <label class="option"><span>Crupier verificó que no tiene blackjack <span class="info">Sólo para A o carta de valor 10 visible</span></span><input type="checkbox" id="peekNoBJ"></label>
+ <label class="option"><span>Crupier revisa blackjack sólo con As <span class="info">Con 10 o figura no mira su carta tapada</span></span><input type="checkbox" id="peekAceOnly"></label>
+ <label class="option"><span>Seis cartas gana <span class="info">«Charlie»: 6 cartas sin pasarte ganan solas</span></span><input type="checkbox" id="charlie6"></label>
  <label class="option"><span>Permitir doblar <span class="info">Sólo con las primeras dos cartas</span></span><input type="checkbox" id="allowDouble"></label>
  <label class="option"><span>Permitir separar pares <span class="info">Sin volver a separar; ases con una carta</span></span><input type="checkbox" id="allowSplit"></label>
  <label class="option"><span>Permitir doblar después de separar (DAS)</span><input type="checkbox" id="doubleAfterSplit"></label>
  <div class="field" style="margin-top:18px"><label for="payout">Pago por blackjack natural</label><select id="payout"><option value="1.5">3:2</option><option value="1.2">6:5</option></select></div>
- <p class="footnote">No contempla seguro, rendición ni reglas especiales de algunos casinos. La opción de «crupier verificado» sólo debe activarse cuando sabés que ya descartó blackjack.</p>
+ <p class="footnote">No contempla seguro, «cobrar», rendición ni otras reglas especiales. La opción de «crupier verificado» sólo debe activarse cuando sabés que ya descartó blackjack.</p>
  </div><div class="modal-actions"><button class="btn" id="settingsCancel">Cancelar</button><button class="btn primary" id="saveSettings">Guardar configuración</button></div></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>/* Blackjack Live Analyzer – probabilistic engine. No server, no external libs. */
@@ -720,7 +727,9 @@ const BJX = (() => {
     const dealer = data.dealer, up = V(dealer[0]), needHole = dealer.length === 1, h17 = !!st.h17;
     const [dt0, ds0] = handState(dealer);
     /* Con peek, la carta tapada no puede completar un blackjack. */
-    const excl = needHole && st.peekNoBJ ? (up === 0 ? 9 : up === 9 ? 0 : -1) : -1;
+    const excl = needHole && st.peekNoBJ ? (up === 0 ? 9 : up === 9 ? 0 : -1) : needHole && st.peekAceOnly && up === 0 ? 9 : -1;
+    /* «Charlie»: con seis cartas sin pasarse, la mano gana sola (incluso contra blackjack). */
+    const charlie = st.charlie6 ? 6 : 0;
     /* Distribución final del crupier: [17,18,19,20,21,se pasa,blackjack]. */
     const POW = [1, 32, 1024, 32768, 1048576, 33554432, 1073741824, 34359738368, 1099511627776, 35184372088832];
     function dealerDist(n) {
@@ -769,25 +778,26 @@ const BJX = (() => {
     }
     const drawn = new Array(10).fill(0), memo = new Map();
     /* Mejor continuación (plantarse o pedir) desde un total dado. */
-    function best(t, s, n) {
+    function best(t, s, n, pc) {
       const key = drawn.join(','); let res = memo.get(key); if (res) return res;
       const cannotBust = t <= 11;
       const mustStand = t >= 21 || (s === 0 && t >= 18) || (s > 0 && t >= 20) || n < 2;
-      if (cannotBust && !mustStand) { res = hit(t, s, n); res.act = 'hit'; }
+      if (cannotBust && !mustStand) { res = hit(t, s, n, pc); res.act = 'hit'; }
       else {
         const [w, tie, l] = standWTL(t, dealerDist(n));
         res = { ev: w - l, w, tie, l, act: 'stand' };
-        if (!mustStand) { const h = hit(t, s, n); if (h.ev > res.ev) { res = h; res.act = 'hit'; } }
+        if (!mustStand) { const h = hit(t, s, n, pc); if (h.ev > res.ev) { res = h; res.act = 'hit'; } }
       }
       memo.set(key, res); return res;
     }
-    function hit(t, s, n) {
+    function hit(t, s, n, pc) {
       let ev = 0, w = 0, tie = 0, l = 0;
       for (let v = 0; v < 10; v++) {
         if (!c[v]) continue; const p = nextProb(v, n); if (p <= 0) continue;
         const [nt, ns] = add(t, s, v);
         if (nt > 21) { ev -= p; l += p; continue; }
-        c[v]--; drawn[v]++; const r = best(nt, ns, n - 1); drawn[v]--; c[v]++;
+        if (charlie && pc + 1 >= charlie) { ev += p; w += p; continue; }
+        c[v]--; drawn[v]++; const r = best(nt, ns, n - 1, pc + 1); drawn[v]--; c[v]++;
         ev += p * r.ev; w += p * r.w; tie += p * r.tie; l += p * r.l;
       }
       return { ev, w, tie, l };
@@ -807,16 +817,19 @@ const BJX = (() => {
     const out = {}, dd0 = dealerDist(n0), need = needHole ? 2 : 1;
     out.dealerBust = dd0[5]; out.dealerBlackjack = dd0[6];
     if (natural) out.stand = { ev: st.payout * (1 - dd0[6]), win: 1 - dd0[6], tie: dd0[6], lose: 0 };
+    else if (charlie && me.length >= charlie && t <= 21) out.stand = { ev: 1, win: 1, tie: 0, lose: 0 };
     else { const [w, tie, l] = standWTL(t, dd0); out.stand = { ev: w - l, win: w, tie, lose: l }; }
-    if (t < 21 && n0 >= need) {
-      const h = hit(t, s, n0); out.hit = { ev: h.ev, win: h.w, tie: h.tie, lose: h.l };
+    const done = charlie && me.length >= charlie;
+    if (t < 21 && n0 >= need && !done) {
+      const h = hit(t, s, n0, me.length); out.hit = { ev: h.ev, win: h.w, tie: h.tie, lose: h.l };
       /* Qué conviene después de cada carta posible (A, 2…9, 10/figura). */
       out.next = [];
       for (let v = 0; v < 10; v++) {
         if (!c[v]) { out.next.push(null); continue; }
         const [nt, ns] = add(t, s, v);
         if (nt > 21) { out.next.push({ total: nt, act: 'bust' }); continue; }
-        c[v]--; drawn[v]++; const r = best(nt, ns, n0 - 1); drawn[v]--; c[v]++;
+        if (charlie && me.length + 1 >= charlie) { out.next.push({ total: nt, act: 'win' }); continue; }
+        c[v]--; drawn[v]++; const r = best(nt, ns, n0 - 1, me.length + 1); drawn[v]--; c[v]++;
         out.next.push({ total: nt, act: nt === 21 ? 'stand' : r.act });
       }
     }
@@ -832,7 +845,7 @@ const BJX = (() => {
         let r;
         if (pv === 0 && st.splitAcesOneCard) { const [a, , d] = standWTL(nt, dealerDist(n0 - 1)); r = a - d; }
         else {
-          r = best(nt, ns, n0 - 1).ev;
+          r = best(nt, ns, n0 - 1, 2).ev;
           if (st.doubleAfterSplit && st.allowDouble) { const d = dbl(nt, ns, n0 - 1); if (d.ev > r) r = d.ev; }
         }
         drawn[v]--; c[v]++;
@@ -848,7 +861,7 @@ if(typeof module!=='undefined')module.exports.BJX=BJX;
 </script><script>(() => {
 'use strict';
 const $=id=>document.getElementById(id);
-const defaults={decks:6,seats:3,iterations:20000,h17:false,peekNoBJ:false,allowDouble:true,allowSplit:true,doubleAfterSplit:true,splitAcesOneCard:true,payout:1.5};
+const defaults={decks:6,seats:3,iterations:20000,h17:false,peekNoBJ:false,allowDouble:true,allowSplit:true,doubleAfterSplit:true,splitAcesOneCard:true,payout:1.5,peekAceOnly:false,charlie6:false};
 const createState=()=>({settings:{...defaults},dealer:[],me:[],others:Array.from({length:defaults.seats},()=>[]),spent:[],selected:'me',openingFlow:true,round:1,log:[]});
 const STORAGE='blackjack-live-analyzer-mobile-staging-v1';
 function readState(){try{const o=JSON.parse(localStorage.getItem(STORAGE));if(o&&Array.isArray(o.dealer)&&Array.isArray(o.me)&&Array.isArray(o.others)&&Array.isArray(o.spent)&&o.settings&&o.settings.decks>=1){o.settings={...defaults,...o.settings};o.log=Array.isArray(o.log)?o.log:[];o.selected=typeof o.selected==='string'?o.selected:'me';if(typeof o.openingFlow!=='boolean')o.openingFlow=o.dealer.length===0&&o.me.length===0;return o;}}catch(e){}return createState();}
@@ -914,6 +927,30 @@ function nextHand(){
  eventLog('Nueva mano '+state.round+' · '+cards.length+' cartas conservadas');ghost=null;hypothetical=false;previousWin=null;lastRealWin=null;
  safeSave();render();runCalculation();message('Primera carta → tu mano.');
 }
+/* Lectura en vivo → tablero. Carga sólo cartas ya verificadas por BMLive. */
+function liveApply(me,dealer){
+ if(hypothetical)return {status:'busy'};
+ const prefix=(a,b)=>a.length<=b.length&&a.every((x,i)=>x===b[i]);
+ const grows=prefix(state.me,me)&&prefix(state.dealer,dealer);
+ if(grows&&state.me.length===me.length&&state.dealer.length===dealer.length)return {status:'same'};
+ const before=JSON.stringify(state);
+ if(!grows){
+  /* cartas distintas a las cargadas: es otra mano; las anteriores pasan al zapato */
+  state.spent.push(...state.me,...state.dealer,...state.others.flat());
+  state.me=[];state.dealer=[];state.others=state.others.map(()=>[]);state.round=(state.round||1)+1;
+ }
+ const add=[...me.slice(state.me.length).map(r=>['me',r]),...dealer.slice(state.dealer.length).map(r=>['dealer',r])];
+ for(const [who,rank] of add){
+  if(!validateRank(rank,[])){state=JSON.parse(before);return {status:'no-cards',rank};}
+  state[who].push(rank);
+ }
+ undo.push(before);if(undo.length>70)undo.shift();
+ state.openingFlow=false;state.selected='me';ghost=null;
+ eventLog('Lectura en vivo · '+me.join(' + ')+' contra '+dealer.join(' + '));
+ safeSave();previousWin=lastRealWin;render();runCalculation();
+ return {status:'loaded'};
+}
+window.BMApp={liveApply,nextHand:()=>nextHand(),hasHand:()=>state.me.length+state.dealer.length>0,peek:()=>({me:state.me.slice(),dealer:state.dealer.slice(),spent:state.spent.length,settings:{...state.settings}})};
 function newShoe(){const have=allKnown().length;if(have&&!confirm('¿Empezar un nuevo zapato? Se borrarán todas las cartas y el conteo actual. Podrás usar Deshacer inmediatamente.'))return;snapshot();const settings={...state.settings};state=createState();state.settings=settings;state.others=Array.from({length:settings.seats},()=>[]);eventLog('Zapato nuevo');ghost=null;hypothetical=false;previousWin=null;lastRealWin=null;safeSave();render();runCalculation();}
 function loadExample(){if(allKnown().length&&!confirm('¿Reemplazar la mesa actual con el ejemplo? Podrás usar Deshacer.'))return;snapshot();const demo=[['A','8'],['5','9'],['10','2'],['7','6']];state.dealer=['K'];state.me=['10','6'];state.others=state.others.map((_,i)=>demo[i]||[]);state.spent=[];state.selected='me';state.openingFlow=false;state.round=1;state.log=[];eventLog('Ejemplo: 16 contra K');ghost=null;hypothetical=false;lastRealWin=null;previousWin=null;safeSave();render();runCalculation();}
 function face(rank,target,index,virtual=false){const div=document.createElement('div');div.className='card-face'+(virtual?' virtual':'');div.dataset.rank=rank;div.textContent=rank;if(!virtual){const remove=document.createElement('button');remove.type='button';remove.className='remove-card';remove.textContent='×';remove.setAttribute('aria-label','Quitar '+rank+' de '+targetName(target));remove.dataset.removeTarget=target;remove.dataset.removeIndex=String(index);div.appendChild(remove);}return div;}
@@ -972,12 +1009,13 @@ function report(results,runner,quiet=false){const stand=results.stand;if(!stand)
 }
 function exactResults(d,model){
  const x=BJX.analyze(d),r={};
- for(const a of model.actions){const v=x[a];if(!v)return null;
+ for(const a of model.actions){const v=x[a];if(!v){if(a!=='stand'&&state.settings.charlie6&&d.me.length>=6)continue;return null;}
   r[a]=a==='split'?{n:0,exact:true,win:null,tie:null,lose:null,ev:v.ev,evMargin:0,winMargin:0,dealerBust:x.dealerBust}:{n:0,exact:true,win:v.win,tie:v.tie,lose:v.lose,ev:v.ev,evMargin:0,winMargin:0,dealerBust:x.dealerBust};}
  if(r.hit&&x.next)r.hit.next=x.next;
  return r;
 }
-function runCalculation(){if(activeTimer)clearTimeout(activeTimer);currentGeneration++;const gen=currentGeneration;const d=getModelData();let runner;try{runner=BJ.createRunner(d,state.settings.iterations);}catch(e){clearProbabilities('No es posible calcular: '+e.message);message('Revisá las cartas y cantidad de mazos.');return;}
+function effectiveSettings(d){const s=d.settings,up=d.dealer[0];if(s.peekAceOnly&&!s.peekNoBJ&&d.dealer.length===1&&up==='A')d.settings={...s,peekNoBJ:true};return d;}
+function runCalculation(){if(activeTimer)clearTimeout(activeTimer);currentGeneration++;const gen=currentGeneration;const d=effectiveSettings(getModelData());let runner;try{runner=BJ.createRunner(d,state.settings.iterations);}catch(e){clearProbabilities('No es posible calcular: '+e.message);message('Revisá las cartas y cantidad de mazos.');return;}
  updateCount(runner.model);
  if(!runner.model.actions.length){clearProbabilities('Cargá al menos 2 cartas tuyas y una del crupier.');return;}
  if(BJ.score(d.me).total>21){clearProbabilities('Te pasaste de 21. La mano está perdida.');$('topWin').textContent='0,0%';$('topTie').textContent='0,0%';$('topLose').textContent='100,0%';$('quickBest').textContent='Mano perdida · pasaste de 21';setAvatar('failed','Te pasaste de 21 en esta mano.');return;}
@@ -1128,7 +1166,7 @@ function setupControls(){
  $('clearHypoBtn').addEventListener('click',()=>{ghost=null;render();runCalculation();});
  $('commitHypoBtn').addEventListener('click',()=>{if(!ghost)return;const saved=ghost;ghost=null;hypothetical=false;state.selected=saved.target;handleCard(saved.rank);});
  $('helpBtn').addEventListener('click',()=>message('Nueva mano: 1) tu carta, 2) carta visible del crupier, 3) tu carta. Luego podés seleccionar otros jugadores.'));
- $('settingsBtn').addEventListener('click',openSettings);$('settingsClose').addEventListener('click',closeSettings);$('settingsCancel').addEventListener('click',closeSettings);
+ $('settingsBtn').addEventListener('click',openSettings);$('settingsClose').addEventListener('click',closeSettings);$('settingsCancel').addEventListener('click',closeSettings);$('presetIlimitado').addEventListener('click',presetIlimitado);
  $('settingsModal').addEventListener('click',e=>{if(e.target===$('settingsModal'))closeSettings();});
  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSettings();});
  $('saveSettings').addEventListener('click',saveSettings);
@@ -1138,10 +1176,14 @@ function setupControls(){
  toggle.addEventListener('click',()=>setStatsExpanded(!details.classList.contains('expanded')));
  $('jumpStatsBtn').addEventListener('click',()=>{setStatsExpanded(true);details.scrollIntoView({behavior:'smooth',block:'start'});});
 }
-function openSettings(){const s=state.settings;for(const id of ['decks','playerCount','precision','payout']){$(id).value=String(id==='playerCount'?s.seats:id==='precision'?s.iterations:s[id]);}for(const id of ['h17','peekNoBJ','allowDouble','allowSplit','doubleAfterSplit'])$(id).checked=!!s[id];$('settingsModal').classList.add('show');$('settingsClose').focus();}
+function openSettings(){const s=state.settings;for(const id of ['decks','playerCount','precision','payout']){$(id).value=String(id==='playerCount'?s.seats:id==='precision'?s.iterations:s[id]);}for(const id of ['h17','peekNoBJ','peekAceOnly','charlie6','allowDouble','allowSplit','doubleAfterSplit'])$(id).checked=!!s[id];$('settingsModal').classList.add('show');$('settingsClose').focus();}
+/* Reglas leídas de la ayuda de la mesa (11/2026): 8 mazos, crupier se planta en 17 blando,
+   revisa blackjack sólo con As, seis cartas ganan, ases divididos reciben una carta.
+   Sólo completa el formulario: hay que tocar «Guardar». */
+function presetIlimitado(){$('decks').value='8';$('payout').value='1.5';const on={h17:false,peekNoBJ:false,peekAceOnly:true,charlie6:true,allowDouble:true,allowSplit:true,doubleAfterSplit:false};for(const k of Object.keys(on))$(k).checked=on[k];message('Reglas de Blackjack Ilimitado cargadas: revisalas y guardá.');}
 function closeSettings(){$('settingsModal').classList.remove('show');}
 function saveSettings(){const old=state.settings;const s={...old,decks:Number($('decks').value),seats:Number($('playerCount').value),iterations:Number($('precision').value),payout:Number($('payout').value)};
- for(const k of ['h17','peekNoBJ','allowDouble','allowSplit','doubleAfterSplit'])s[k]=$(k).checked;
+ for(const k of ['h17','peekNoBJ','peekAceOnly','charlie6','allowDouble','allowSplit','doubleAfterSplit'])s[k]=$(k).checked;
  const hasCards=allKnown().length>0;
  if(s.decks!==old.decks&&hasCards){message('Para cambiar el número de mazos, iniciá primero un nuevo zapato.');return;}
  if(s.seats<state.others.length&&state.others.slice(s.seats).some(h=>h.length)){message('Primero quitá las cartas de los jugadores que querés ocultar.');return;}
@@ -1192,7 +1234,8 @@ setupControls();render();runCalculation();
   <div class="bmpc-hint" id="bmmPcHint">Tocá el valor de tu primera carta.</div>
   <div class="bmpc-ranks" id="bmmPcRanks" aria-label="Valores de las cartas"></div>
  </div>
- <footer class="bmpc-foot"><button type="button" id="bmmPcNewHand">↻ Nueva mano · Espacio</button></footer>
+ <div class="bmpc-live" id="bmmPcLiveStatus" role="status" aria-live="polite"></div>
+ <footer class="bmpc-foot"><button type="button" id="bmmPcLive" aria-pressed="false">📡 Leer mesa</button><button type="button" id="bmmPcNewHand">↻ Nueva mano · Espacio</button></footer>
 </section>
 
 <script>
@@ -1296,7 +1339,7 @@ setupControls();render();runCalculation();
  }
  function setText(id,value){const el=$(id);if(el&&el.textContent!==value)el.textContent=value;}
  const NEXT_LABEL=['A','2','3','4','5','6','7','8','9','10–K'];
- const NEXT_TEXT={hit:'pedí otra',stand:'plantate',bust:'te pasás'};
+ const NEXT_TEXT={hit:'pedí otra',stand:'plantate',bust:'te pasás',win:'ganás (6 cartas)'};
  /* «Si sale…»: agrupa las cartas posibles según lo que conviene hacer después. */
  function nextText(){
   const last=window.BMLast;if(!last||last.action!=='hit'||!last.next)return '';
@@ -1394,7 +1437,7 @@ setupControls();render();runCalculation();
  ranksBox.addEventListener('click',e=>{const b=e.target.closest('[data-pc-rank]');if(b)addRank(b.dataset.pcRank);});
  $('bmmPcSlots').addEventListener('click',e=>{const b=e.target.closest('[data-pc-slot]');if(b)removeSlot(b.dataset.pcSlot);});
  $('bmmPcNewHand').addEventListener('click',newHand);
- document.addEventListener('bm:report',()=>{if(pc.classList.contains('open'))syncCoach();});
+ document.addEventListener('bm:report',()=>{if(pc.classList.contains('open'))paint();});
  $('bmmPcClose').addEventListener('click',close);
  $('bmmPcToggle').addEventListener('click',open);
  document.addEventListener('keydown',e=>{
@@ -1948,6 +1991,261 @@ setupControls();render();runCalculation();
  }
 
  clearCrops();
+})();
+</script>
+<script>
+/* BMV — lector de la mesa «Blackjack Ilimitado» (Betano).
+   Ubica el globo con tu total, el bloque de tus cartas y las del crupier, y lee
+   cada valor por plantillas. Trabaja sobre píxeles RGBA; no sube nada. */
+const BMV = (() => {
+  'use strict';
+  const GW = 14, GH = 18, DW = 10, DH = 14;
+  let RANK_T = [], DIGIT_T = [];
+  function unpack(list, n) {
+    return list.map(([label, b64, asp]) => {
+      const bin = typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary');
+      const v = new Float32Array(n); for (let i = 0; i < n; i++) v[i] = bin.charCodeAt(i) / 255;
+      return { label, v: unit(v), asp };
+    });
+  }
+  function setTemplates(t) { RANK_T = unpack(t.ranks || [], GW * GH); DIGIT_T = unpack(t.digits || [], DW * DH); }
+  function unit(v) {
+    let m = 0; for (let i = 0; i < v.length; i++) m += v[i]; m /= v.length;
+    let s = 0; const o = new Float32Array(v.length);
+    for (let i = 0; i < v.length; i++) { o[i] = v[i] - m; s += o[i] * o[i]; }
+    s = Math.sqrt(s) || 1; for (let i = 0; i < v.length; i++) o[i] /= s; return o;
+  }
+  /* Componentes conexos (4 vecinos) de una máscara dentro de un rectángulo. */
+  function components(test, x0, y0, x1, y1) {
+    const w = x1 - x0, h = y1 - y0, seen = new Uint8Array(w * h), out = [], stack = [];
+    for (let sy = 0; sy < h; sy++) for (let sx = 0; sx < w; sx++) {
+      const s = sy * w + sx; if (seen[s]) continue; seen[s] = 1; if (!test(x0 + sx, y0 + sy)) continue;
+      let ax0 = sx, ax1 = sx, ay0 = sy, ay1 = sy, area = 0; stack.push(s);
+      while (stack.length) {
+        const c = stack.pop(), cx = c % w, cy = (c - cx) / w; area++;
+        if (cx < ax0) ax0 = cx; if (cx > ax1) ax1 = cx; if (cy < ay0) ay0 = cy; if (cy > ay1) ay1 = cy;
+        if (cx > 0 && !seen[c - 1]) { seen[c - 1] = 1; if (test(x0 + cx - 1, y0 + cy)) stack.push(c - 1); }
+        if (cx < w - 1 && !seen[c + 1]) { seen[c + 1] = 1; if (test(x0 + cx + 1, y0 + cy)) stack.push(c + 1); }
+        if (cy > 0 && !seen[c - w]) { seen[c - w] = 1; if (test(x0 + cx, y0 + cy - 1)) stack.push(c - w); }
+        if (cy < h - 1 && !seen[c + w]) { seen[c + w] = 1; if (test(x0 + cx, y0 + cy + 1)) stack.push(c + w); }
+      }
+      out.push({ x0: x0 + ax0, y0: y0 + ay0, x1: x0 + ax1 + 1, y1: y0 + ay1 + 1, area });
+    }
+    return out;
+  }
+  /* Recorta la tinta de un rectángulo y la lleva a una grilla fija en grises. */
+  function glyph(px, X0, Y0, X1, Y1, gw, gh, inkOf, thr, segment) {
+    X0 = Math.max(0, Math.round(X0)); Y0 = Math.max(0, Math.round(Y0)); X1 = Math.min(px.W, Math.round(X1)); Y1 = Math.min(px.H, Math.round(Y1));
+    if (X1 - X0 < 3 || Y1 - Y0 < 4) return null;
+    /* columnas con tinta → tramos; el valor es el primer tramo (o «1» + «0») */
+    const cols = new Uint16Array(X1 - X0);
+    for (let y = Y0; y < Y1; y++) for (let x = X0; x < X1; x++) if (inkOf(x, y) > thr) cols[x - X0]++;
+    const runs = []; let start = -1;
+    for (let i = 0; i <= cols.length; i++) { const on = i < cols.length && cols[i] > 0; if (on && start < 0) start = i; if (!on && start >= 0) { runs.push([start, i - 1]); start = -1; } }
+    if (!runs.length) return null;
+    const rows = (a, b) => { let y0 = 1e9, y1 = -1, c = 0; for (let y = Y0; y < Y1; y++) for (let x = X0 + a; x <= X0 + b; x++) if (inkOf(x, y) > thr) { c++; if (y < y0) y0 = y; if (y > y1) y1 = y; } return [y0, y1, c]; };
+    let [a, b] = runs[0], r0 = rows(a, b);
+    if (segment && runs.length > 1) {
+      const h0 = r0[1] - r0[0] + 1, r1 = rows(runs[1][0], runs[1][1]);
+      /* un «1» angosto seguido de cerca por un «0» de la misma altura es un 10 */
+      if (b - a + 1 <= 0.5 * h0 && runs[1][0] - b - 1 <= Math.max(2, 0.22 * h0) && Math.abs((r1[1] - r1[0] + 1) - h0) <= Math.max(2, 0.2 * h0) && Math.abs(r1[0] - r0[0]) <= Math.max(2, 0.15 * h0)) { b = runs[1][1]; r0 = rows(a, b); }
+    } else if (!segment) { b = runs[runs.length - 1][1]; r0 = rows(a, b); }
+    const bx0 = X0 + a, bx1 = X0 + b, by0 = r0[0], by1 = r0[1], count = r0[2];
+    const w = bx1 - bx0 + 1, h = by1 - by0 + 1, v = new Float32Array(gw * gh);
+    for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+      /* promedio del área de origen que cae en la celda */
+      const fx0 = bx0 + gx * w / gw, fx1 = bx0 + (gx + 1) * w / gw, fy0 = by0 + gy * h / gh, fy1 = by0 + (gy + 1) * h / gh;
+      let sum = 0, wt = 0;
+      for (let y = Math.floor(fy0); y < Math.ceil(fy1); y++) for (let x = Math.floor(fx0); x < Math.ceil(fx1); x++) {
+        const ww = (Math.min(x + 1, fx1) - Math.max(x, fx0)) * (Math.min(y + 1, fy1) - Math.max(y, fy0));
+        if (ww > 0) { sum += ww * inkOf(x, y); wt += ww; }
+      }
+      v[gy * gw + gx] = wt ? sum / wt / 255 : 0;
+    }
+    return { v, asp: w / h, box: [bx0, by0, bx1 + 1, by1 + 1], touchesRight: bx1 >= X1 - 1, touchesTop: by0 <= Y0 };
+  }
+  function classify(g, T) {
+    if (!g || !T.length) return { label: '', score: 0, margin: 0 };
+    const u = unit(g.v), best = new Map();
+    for (const t of T) {
+      let dot = 0; for (let i = 0; i < u.length; i++) dot += u[i] * t.v[i];
+      const s = dot - 0.25 * Math.abs(Math.log(g.asp / t.asp));
+      if (!best.has(t.label) || s > best.get(t.label)) best.set(t.label, s);
+    }
+    const order = [...best.entries()].sort((a, b) => b[1] - a[1]);
+    return { label: order[0][0], score: order[0][1], margin: order.length > 1 ? order[0][1] - order[1][1] : 1, asp: g.asp };
+  }
+  function read(img) {
+    const d = img.data, W = img.width, H = img.height;
+    const R = (x, y) => d[(y * W + x) * 4], G = (x, y) => d[(y * W + x) * 4 + 1], B = (x, y) => d[(y * W + x) * 4 + 2];
+    const mn = (x, y) => { const i = (y * W + x) * 4; return Math.min(d[i], d[i + 1], d[i + 2]); };
+    const mx = (x, y) => { const i = (y * W + x) * 4; return Math.max(d[i], d[i + 1], d[i + 2]); };
+    const white = (x, y) => mn(x, y) > 212;
+    const px = { W, H };
+    const res = { ok: false, reason: '', state: '', player: [], dealer: [], total: null, checks: [] };
+    /* 1. Globo del total: amarillo (decisión pendiente) o rojo (mano cerrada). */
+    const top = Math.floor(H * 0.35), pills = [];
+    const isY = (x, y) => R(x, y) > 215 && G(x, y) > 195 && B(x, y) < 100, isR = (x, y) => R(x, y) > 190 && G(x, y) < 60 && B(x, y) < 70;
+    for (const [color, test] of [['yellow', isY], ['red', isR]]) {
+      /* se toleran los dígitos oscuros dentro del globo */
+      const fill = (x, y) => test(x, y) || ((x > 0 && test(x - 1, y)) && false);
+      for (const c of components(fill, 0, top, W, H)) {
+        const h = c.y1 - c.y0, w = c.x1 - c.x0;
+        if (h >= 8 && h <= 48 && w >= h * 1.2 && w <= h * 3.6 && c.area > 0.42 * w * h) pills.push({ ...c, color, h, w });
+      }
+    }
+    if (!pills.length) { res.reason = 'sin-globo'; return res; }
+    pills.sort((a, b) => b.area - a.area);
+    let pill = null, blob = null;
+    for (const p of pills) {
+      const ph = p.h, rx0 = p.x1, rx1 = Math.min(W, p.x1 + Math.round(ph * 15)), ry0 = Math.max(0, p.y0 - Math.round(ph * 10)), ry1 = Math.min(H, p.y1 + Math.round(ph * 2));
+      let cand = null;
+      for (const c of components(white, rx0, ry0, rx1, ry1)) {
+        const h = c.y1 - c.y0, w = c.x1 - c.x0;
+        if (h > ph * 1.5 && w > ph * 1.5 && c.x0 - rx0 < ph * 3 && c.y1 > p.y0 && c.y1 < p.y1 + ph && (!cand || c.area > cand.area)) cand = c;
+      }
+      if (cand) { pill = p; blob = cand; break; }
+    }
+    if (!blob) { res.reason = 'sin-cartas'; return res; }
+    res.state = pill.color === 'yellow' ? 'decidir' : 'cerrada';
+    res.pill = [pill.x0, pill.y0, pill.x1, pill.y1]; res.blob = [blob.x0, blob.y0, blob.x1, blob.y1];
+    /* 2. Escala: alto de la primera carta, medido en su borde izquierdo. */
+    const cardish = (x, y) => mn(x, y) > 185 || mx(x, y) < 95 || (R(x, y) > 170 && G(x, y) < 110);
+    let ch = 0, gap = 0;
+    for (let y = blob.y1 - 1; y >= Math.max(0, blob.y0 - 4); y--) {
+      let k = 0; for (let x = blob.x0; x < blob.x0 + 6; x++) if (cardish(x, y)) k++;
+      if (k >= 2) { ch += 1 + gap; gap = 0; } else if (++gap > 3) break;
+    }
+    if (ch < 18) { res.reason = 'escala'; return res; }
+    const cw = ch * 0.985, BW = blob.x1 - blob.x0, BH = blob.y1 - blob.y0;
+    const n = Math.max(1, Math.min(8, Math.round((BW / cw - 1) / 0.5) + 1));
+    res.scale = ch; res.n = n;
+    const geomOk = Math.abs(BH - ch * (1 + 0.4 * (n - 1))) <= 0.22 * ch && Math.abs(BW - cw * (1 + 0.5 * (n - 1))) <= 0.2 * cw;
+    if (!geomOk) res.checks.push('geometria');
+    const ink = (x, y) => 255 - mn(x, y);
+    /* 3. Tus cartas: en diagonal, la primera abajo a la izquierda. */
+    for (let i = 0; i < n; i++) {
+      const cx = blob.x0 + i * 0.5 * cw, cy = blob.y1 - ch - i * 0.4 * ch, last = i === n - 1;
+      const g = glyph(px, cx + 0.04 * cw, cy + 0.04 * ch, cx + (last ? 0.56 : 0.49) * cw, cy + 0.48 * ch, GW, GH, ink, 95, true);
+      const c = classify(g, RANK_T); c.box = g ? g.box : null; c.g = g; res.player.push(c);
+    }
+    /* 4. Crupier: arriba a la izquierda, cartas una al lado de la otra. */
+    const dx0 = Math.max(0, Math.round(blob.x0 - 8.5 * cw)), dx1 = Math.round(blob.x0 - 2.5 * cw), dy0 = Math.max(0, Math.round(blob.y1 - 7.2 * cw)), dy1 = Math.round(blob.y1 - 3.2 * cw);
+    let db = null;
+    if (dx1 > dx0 && dy1 > dy0) {
+      const parts = components(white, dx0, dy0, dx1, dy1).filter(c => { const h = c.y1 - c.y0; return h > 0.55 * cw && h < 1.05 * cw && c.x1 - c.x0 >= 0.12 * cw; }).sort((a, b) => a.x0 - b.x0);
+      /* las cartas del crupier se tocan: se unen los tramos vecinos a la misma altura */
+      const groups = [];
+      for (const c of parts) {
+        const g = groups[groups.length - 1];
+        if (g && c.x0 - g.x1 <= 0.12 * cw && Math.abs(c.y1 - g.y1) <= 0.12 * cw) { g.x1 = Math.max(g.x1, c.x1); g.y0 = Math.min(g.y0, c.y0); g.y1 = Math.max(g.y1, c.y1); g.area += c.area; }
+        else groups.push({ ...c });
+      }
+      for (const g of groups) if (g.x1 - g.x0 > 0.4 * cw && (!db || g.area > db.area)) db = g;
+    }
+    if (db) {
+      res.dealerBox = [db.x0, db.y0, db.x1, db.y1];
+      const dw = db.x1 - db.x0, nd = Math.max(1, Math.min(8, Math.round((dw / cw - 0.61) / 0.30) + 1));
+      for (let j = 0; j < nd; j++) {
+        const cx = db.x0 + j * 0.30 * cw, cy = db.y1 - 0.82 * cw, last = j === nd - 1;
+        const g = glyph(px, cx + 0.02 * cw, cy + 0.02 * cw, cx + (last ? 0.40 : 0.31) * cw, cy + 0.42 * cw, GW, GH, ink, 95, true);
+        const c = classify(g, RANK_T); c.box = g ? g.box : null; c.g = g; c.covered = !last; res.dealer.push(c);
+      }
+    }
+    /* 5. Total del globo, para verificar la lectura. */
+    const dark = (x, y) => 255 - mx(x, y);
+    const py0 = pill.y0 + Math.round(pill.h * 0.18), py1 = pill.y1 - Math.round(pill.h * 0.18), pxa = pill.x0 + Math.round(pill.h * 0.3), pxb = pill.x1 - Math.round(pill.h * 0.3);
+    const runs = []; let start = -1;
+    for (let x = pxa; x <= pxb; x++) {
+      let on = false; if (x < pxb) for (let y = py0; y < py1; y++) if (mx(x, y) < 150) { on = true; break; }
+      if (on && start < 0) start = x; if (!on && start >= 0) { runs.push([start, x]); start = -1; }
+    }
+    let text = '', sure = runs.length > 0 && runs.length <= 5; res.pillGlyphs = [];
+    for (const [a, b] of runs) {
+      const g = glyph(px, a, py0, b, py1, DW, DH, dark, 105, false), k = classify(g, DIGIT_T); res.pillGlyphs.push(g);
+      if (!k.label || k.score < 0.85 || k.margin < 0.1) sure = false; /* dígito no visto antes → sin verificación, nunca un total inventado */
+      text += k.label || '?';
+    }
+    res.pillText = sure ? text : '';
+    if (sure) { const parts = text.split('/'); const t = Number(parts[parts.length - 1]); if (t >= 2 && t <= 31) res.total = t; }
+    res.ok = true; return res;
+  }
+  return { read, setTemplates, glyph, components, GW, GH, DW, DH };
+})();
+
+/* Plantillas armadas con capturas reales de la mesa (11/2026). El «9» es provisional:
+   sale de girar el «6» hasta tener una captura con un 9 de verdad. */
+BMV.setTemplates({"ranks":[["A","AgIBARFvwMCYKgIBAgICAgEBJIrKyrE7BQECAgICAgJFudzc3FkKAgIDAwMDEXLR3NzckBwDAwQDAwMciNrX2dyqJwQDBAMEBFC/3Ki52dxQCgQFAwQQbczbho7O3HYRBAUEBB6P29ldWsDcpBoFBgUGUbrctUAosdzSPAgHBQtnyNyyTzez3NxVCwcGJJvc3Miwqsvb3KIUCQdKtNzRuqypuNfcwSsKB2nJ3Mevqamp1NzbPgswpdrcaiAWFhqX19yWJE+33NxwFgcHFZ3X3K9ImNfc3JghCAguvNvc2KF+p6ioexsJCSqXqKinhm+Li4tqGAkJJ4KLi4t2",1.273],["10","lDwGJW+EWxMJN2+Cbi2POBtIiZlpGyNaiJSHUn0octPw7Z85jejr3OvoeiVqyursoVqv5q6GreR1IGC94OyjiuHiUQZR3XEXK2e/7K+h5s0tBSXNbhIHLanstrDqvhUDCMJpEgUpq+y8vOywEgQHsWcSBCir7L6/7K0RBAetYBAFK7Hrv8PtqhEFB6pfEAUssuu9we2rEQUHrFkQBi+267e67bARBgi0Vw8GMLnrr7HsvRQGD75TDwYyvOujpevQGAcZzVAOBzS/65aE4N9iNmLdTQ4HNsHqjW/Z6ZNWk+dHDgg3weWHKZPc2NDW1kUOCDfB44UYgdnq7+fS",1.7],["10","k73y8t20RVPy8u7L4fKTvfLy3bRFU/Ly7svh8lGHyu7ds5Wj8p5nAkR4UYfK7t2zlaPynmcCRHgDGznd3bTAzfJ0MAQgNgMbOd3dtMDN8nQwBCA2BR063t61z9zyayQEFycFHTre3rXP3PJrJAQXJwUdO97etc/c8mskBRcmBR073t61z9zyayQFFyYGHjve3bTC0PJyLQYdMAYeO97dtMLQ8nItBh0wBx883t61pbLyl18HP2wHHzze3rWlsvKXXwc/bAggPd7etVpo8uveksLoCCA93t61Wmjy696SwugJGjCqqYomGU+Fo7mjkgkaMKqpiiYZT4WjuaOS",1],["3","FzxrqrfCyMrJvrFxPhYXPGuqt8LIysm+sXE+FlyT2NG8lHd6ocLT3JBUXJPY0byUd3qhwtPckFQqOUs8LRQHE02YwNyRVSo5SzwtFAcTTZjA3JFVBAQEBAwcQWKvzNKRTxoEBAQEDBxBYq/M0pFPGgUFBQUTL2eHvdDUrnhNBQUFBRMvZ4e90NSueE0ICAgHBwYGDzCNv9zQxwgICAcHBgYPMI2/3NDHqcDconQmDg4lisDcz8SpwNyidCYODiWKwNzPxJ242tbLtaiqwNHZ3KV5nbja1su1qKrA0dncpXksVIWosLm/wcG3rHg/ESxUhaiwub/BwbeseD8R",1],["K","UbDDw76jUkaYucLCsmdRsMPDvqNSRpi5wsKyZz6j3uvLhyxMtOTv0449PqPe68uHLEy05O/Tjj0Vb8zfo0s0s+XgmUELAxVvzN+jSzSz5eCZQQsDGnrQ582zz/HYbSAFBAQaetDnzbPP8dhtIAUEBB+F1PLy8vLyrUsTBQUFH4XU8vLy8vKtSxMFBQUkj9jfq3Gk6fCxVhMGBiSP2N+rcaTp8LFWEwYGKJnc148vGJLY7sRsEwcomdzXjy8YktjuxGwTB3HG6eW3Yxcntefy3KNbccbp5bdjFye15/Lco1uIo6iooX8fPY2mqquom4ijqKihfx89jaaqq6ib",1.333],["K","pqampqamFhaamqampqampqampqYWFpqapqampo+Pzs6Xlw0Nt7fOzoSEiIjc3JKSCgrBwdzceXlubtzceXk0NM7Ot7c/P1NT3NxgYF5e3NyTkwQEU1Pc3HBwe3vU1HJyBARTU9zcnp7T07u7DQ0EBFNT3NyentPTu7sNDQQEVFTc3Nzc3Ny8vAwMBQVUVNzc3Nzc3Ly8DAwFBVRU3NyAgIqK1NRkZAYGVFTc3GJib2/c3IGBBgZVVdzcY2M7O8XFrq4lJVVV3NxjYwcHrq7c3ENDdHTc3H5+DQ2srNzcaWnPz9zc0NAdHaen3Nzc3M/P3NzQ0B0dp6fc3Nzc",0.875],["3","FzxrqrfCyMrJvrFxPhYXPGuqt8LIysm+sXE+FlyT2NG8lHd6ocLT3JBUXJPY0byUd3qhwtPckFQqOUs8LRQHE02YwNyRVSo5SzwtFAcTTZjA3JFVBAQEBAwcQWKvzNKRTxoEBAQEDBxBYq/M0pFPGgUFBQUTL2eHvdDUrnhNBQUFBRMvZ4e90NSueE0ICAgHBwYGDzCNv9zQxwgICAcHBgYPMI2/3NDHqcDconQmDg4lisDcz8SpwNyidCYODiWKwNzPxJ242tbLtaiqwNHZ3KV5nbja1su1qKrA0dncpXksVIWosLm/wcG3rHg/ESxUhaiwub/BwbeseD8R",1],["K","UbDDw76jUkaYucLCsmdRsMPDvqNSRpi5wsKyZz6j3uvLhyxMtOTv0449PqPe68uHLEy05O/Tjj0Vb8zfo0s0s+XgmUELAxVvzN+jSzSz5eCZQQsDGnrQ582zz/HYbSAFBAQaetDnzbPP8dhtIAUEBB+F1PLy8vLyrUsTBQUFH4XU8vLy8vKtSxMFBQUkj9jfq3Gk6fCxVhMGBiSP2N+rcaTp8LFWEwYGKJnc148vGJLY7sRsEwcomdzXjy8YktjuxGwTB3HG6eW3Yxcntefy3KNbccbp5bdjFye15/Lco1uIo6iooX8fPY2mqquom4ijqKihfx89jaaqq6ib",1.333],["K","pqampqamFhaamqampqampqampqYWFpqapqampo+Pzs6Xlw0Nt7fOzoSEiIjc3JKSCgrBwdzceXlubtzceXk0NM7Ot7c/P1NT3NxgYF5e3NyTkwQEU1Pc3HBwe3vU1HJyBARTU9zcnp7T07u7DQ0EBFNT3NyentPTu7sNDQQEVFTc3Nzc3Ny8vAwMBQVUVNzc3Nzc3Ly8DAwFBVRU3NyAgIqK1NRkZAYGVFTc3GJib2/c3IGBBgZVVdzcY2M7O8XFrq4lJVVV3NxjYwcHrq7c3ENDdHTc3H5+DQ2srNzcaWnPz9zc0NAdHaen3Nzc3M/P3NzQ0B0dp6fc3Nzc",0.875],["3","FzxrqrfCyMrJvrFxPhYXPGuqt8LIysm+sXE+FlyT2NG8lHd6ocLT3JBUXJPY0byUd3qhwtPckFQqOUs8LRQHE02YwNyRVSo5SzwtFAcTTZjA3JFVBAQEBAwcQWKvzNKRTxoEBAQEDBxBYq/M0pFPGgUFBQUTL2eHvdDUrnhNBQUFBRMvZ4e90NSueE0ICAgHBwYGDzCNv9zQxwgICAcHBgYPMI2/3NDHqcDconQmDg4lisDcz8SpwNyidCYODiWKwNzPxJ242tbLtaiqwNHZ3KV5nbja1su1qKrA0dncpXksVIWosLm/wcG3rHg/ESxUhaiwub/BwbeseD8R",1],["K","UbDDw76jUkaYucLCsmdRsMPDvqNSRpi5wsKyZz6j3uvLhyxMtOTv0449PqPe68uHLEy05O/Tjj0Vb8zfo0s0s+XgmUELAxVvzN+jSzSz5eCZQQsDGnrQ582zz/HYbSAFBAQaetDnzbPP8dhtIAUEBB+F1PLy8vLyrUsTBQUFH4XU8vLy8vKtSxMFBQUkj9jfq3Gk6fCxVhMGBiSP2N+rcaTp8LFWEwYGKJnc148vGJLY7sRsEwcomdzXjy8YktjuxGwTB3HG6eW3Yxcntefy3KNbccbp5bdjFye15/Lco1uIo6iooX8fPY2mqquom4ijqKihfx89jaaqq6ib",1.333],["K","pqampqamFhaamqampqampqampqYWFpqapqampo+Pzs6Xlw0Nt7fOzoSEiIjc3JKSCgrBwdzceXlubtzceXk0NM7Ot7c/P1NT3NxgYF5e3NyTkwQEU1Pc3HBwe3vU1HJyBARTU9zcnp7T07u7DQ0EBFNT3NyentPTu7sNDQQEVFTc3Nzc3Ny8vAwMBQVUVNzc3Nzc3Ly8DAwFBVRU3NyAgIqK1NRkZAYGVFTc3GJib2/c3IGBBgZVVdzcY2M7O8XFrq4lJVVV3NxjYwcHrq7c3ENDdHTc3H5+DQ2srNzcaWnPz9zc0NAdHaen3Nzc3M/P3NzQ0B0dp6fc3Nzc",0.875],["3","FzxrqrfCyMrJvrFxPhYXPGuqt8LIysm+sXE+FlyT2NG8lHd6ocLT3JBUXJPY0byUd3qhwtPckFQqOUs8LRQHE02YwNyRVSo5SzwtFAcTTZjA3JFVBAQEBAwcQWKvzNKRTxoEBAQEDBxBYq/M0pFPGgUFBQUTL2eHvdDUrnhNBQUFBRMvZ4e90NSueE0ICAgHBwYGDzCNv9zQxwgICAcHBgYPMI2/3NDHqcDconQmDg4lisDcz8SpwNyidCYODiWKwNzPxJ242tbLtaiqwNHZ3KV5nbja1su1qKrA0dncpXksVIWosLm/wcG3rHg/ESxUhaiwub/BwbeseD8R",1],["K","UbDDw76jUkaYucLCsmdRsMPDvqNSRpi5wsKyZz6j3uvLhyxMtOTv0449PqPe68uHLEy05O/Tjj0Vb8zfo0s0s+XgmUELAxVvzN+jSzSz5eCZQQsDGnrQ582zz/HYbSAFBAQaetDnzbPP8dhtIAUEBB+F1PLy8vLyrUsTBQUFH4XU8vLy8vKtSxMFBQUkj9jfq3Gk6fCxVhMGBiSP2N+rcaTp8LFWEwYGKJnc148vGJLY7sRsEwcomdzXjy8YktjuxGwTB3HG6eW3Yxcntefy3KNbccbp5bdjFye15/Lco1uIo6iooX8fPY2mqquom4ijqKihfx89jaaqq6ib",1.333],["K","pqampqY8GJ2hrK+zbVampqampjwYnaGsr7NtVo+fzrOXMQ+5wNK1mWRSiJ3ct5IuDMPK37eQYVFtidyqeUc20My+j2FUUFJ13J5gYGDezp1oMkdOUnXcpnB6fdbAf1kzSE9Tddy9nsbUvpckLDRLUlN13L2extS+lyQsNEtSU3Xc3Nzd3b6XIyw1TFNTddzc3N3dvpcjLDVMU1R23K6Ai4/WvXNUNkxUVHbcn2Jwdd7KjWI2TVRVdtyfYkhAycS2gk9TVFV33J9iIAq0v+CjZ1lUdI7crX4rELK94LOGa2LP0tzW0E0hq7jg4eOijc/S3NbQTSGruODh46KN",1],["5","eXmFt7e3t7e3t7e3t7d5eYW3t7e3t7e3t7e3t5eXpuPjwIqKioqKioqKoaGx8vLCe3t7e3t7e3uhobHy8rFQUE1LS0E/P6GhsfLyoCQkHhoaCAMDoaGx8vK0WFhTUFAsIyOhobHy8vLy8vLy8piBgaGhsfLy8vLy8vLymIGBLS0xQUFBQUGBq6vk8vItLTFBQUFBQYGrq+Ty8j09Oi4uJBUVSm5u2PLyQkI9JycaBgY4WlrU8vKampJyck0WFliEhNzy8vLy57y8gCYmeK+v5fLy0tLQycmcWVmXwMDW29txcYvy8vLy8vLy8qqYmHFxi/Ly8vLy8vLyqpiY",0.625],["Q","ARpYlbzJzMezfDkLAgEBGliVvMnMx7N8OQsCASqJw76MVT9rrtCuXA8CKonDvoxVP2uu0K5cDwJwx7FlHwMDA0Oezqc8B3DHsWUfAwMDQ57OpzwHkc+VRRYOBwQMf8m9awuRz5VFFg4HBAx/yb1rC5vRybernHs0En7Jv3ILm9HJt6ucezQSfsm/cguZ0beOhKXQ3Ieu07RUCpnRt46EpdDch67TtFQKe8K5di0VRLnU28yHGgd7wrl2LRVEudTbzIcaByCJw8++qKbQ2dzPqGxIIInDz76optDZ3M+obEgIE0R/qLS0oHqMqby4iggTRH+otLSgeoypvLiK",1.333],["7","pqampqampqampqampqampqampqampqampqampn5+fn5+fn5+l6iox87OcHBwcHBwcHCSqanS3Nw6Ojo6Ojo6OoO0tMjMzAQEBAMDAwQEdL+/vb29BAQEAwMKFBR/xsaspqYEBAQEBB1CQp7c3HlgYAQEBAQEHUJCntzceWBgBgYGBQVDoKC/1NQ5EhIGBgYFBUOgoL/U1DkSEgYGCyAgZc3NrpmZJgkJBgYNKSlx3NyohoYgBgYHBxdYWIzc3I1ZWRcHBwgIIYaGqNzccisrDwgICwsomZmv0NBoIiINCAgUFDrU1MSsrEoICAgICBQUOtTUxKysSggICAgI",0.625],["Q","ARpYlbzJzMezfDkLAwUBGliVvMnMx7N8OQsDBSqJw76MVT9rrtCuXA8GKonDvoxVP2uu0K5cDwZwx7FlHwMDA0Oezqc8DHDHsWUfAwMDQ57OpzwMkc+VRRYOBwQMf8m9bRGRz5VFFg4HBAx/yb1tEZvRybernHs0En7Jv3MSm9HJt6ucezQSfsm/cxKZ0beOhKXQ3Ieu07RXE5nRt46EpdDch67TtFcTe8K5di0VRLnU28yIHhF7wrl2LRVEudTbzIgeESCJw8++qKbQ2dzPqW5QIInDz76optDZ3M+pblAIE0R/qLS0oHqMqby5jwgTRH+otLSgeoypvLmP",1.333],["6","mXJjYWFhYWFhYGBgYGGGW1BOVWZvZlVOTU1NTjoBAQQnfKh4JQQBAQEBLQEDFFKepmAaAwEBAQEaAgYuk9GjOwgCAgICAhkEGmm6vWwfBQICAwMCGAUokdWvRwsDAgMDAwIYHnrJ2sykXBoFBAQEBBgkjtjb1LxwHwYEBAQEIn7SwZ2bv9OJJgcFBQUnhs+rgH6p0JMtCAUFBT+mxVIOCFLCvEkLBgYGPKfIXhgUYsa3RAsGBgY3qMtxJyd5za8+CgcHByWSzrGUk7TQhSQJBwgHGYPQ3Nzc3NJpEwgHCAcTLmyYqKeRYSYLCQkJCREYU4ebmn9FFQkJCQkJ",1.5],["7","pqampqampqampqampqampqampqampqampqampn5+fn5+fn5+l6iox87OcHBwcHBwcHCSqanS3Nw6Ojo6Ojo6OoO0tMjMzAQEBAMDAwQEdL+/vb29BAQEAwMKFBR/xsaspqYEBAQEBB1CQp7c3HlgYAQEBAQEHUJCntzceWBgBgYGBQVDoKC/1NQ5EhIGBgYFBUOgoL/U1DkSEgYGCyAgZc3NrpmZJgkJBgYNKSlx3NyohoYgBgYHBxdYWIzc3I1ZWRcHBwgIIYaGqNzccisrDwgICwsomZmv0NBoIiINCAgUFDrU1MSsrEoICAgICBQUOtTUxKysSggICAgI",0.625],["Q","ARpYlbzJzMezfDkLAwUBGliVvMnMx7N8OQsDBSqJw76MVT9rrtCuXA8GKonDvoxVP2uu0K5cDwZwx7FlHwMDA0Oezqc8DHDHsWUfAwMDQ57OpzwMkc+VRRYOBwQMf8m9bRGRz5VFFg4HBAx/yb1tEZvRybernHs0En7Jv3MSm9HJt6ucezQSfsm/cxKZ0beOhKXQ3Ieu07RXE5nRt46EpdDch67TtFcTe8K5di0VRLnU28yIHhF7wrl2LRVEudTbzIgeESCJw8++qKbQ2dzPqW5QIInDz76optDZ3M+pblAIE0R/qLS0oHqMqby5jwgTRH+otLSgeoypvLmP",1.333],["6","mXNlY2JhYWJhYGBhYWGGXFFQVmZvZlVOTU5OTjsBAQQnfKh4JQQBAQEBLgEDFFKepmAaAwEBAQEaAgYuk9GjOwgCAgICAhkEGmm6vWwfBQICAwMCGAUokdWvRwsDAgMDAwIYHnrJ2sykXBoFBAQEBBgkjtjb1LxwHwYEBAQEIn7SwZ2bv9OJJgcFBQUnhs+rgH6p0JMtCAUFBT+mxVIOCFLCvEkLBgYGPKfIXhgUYsa3RAsGBgY3qMtxJyd5za8+CgcHByWSzrGUk7TQhSQJBwgHGYPQ3Nzc3NJpEwgHCAcTLmyYqKeRYSYLCQkJCREYU4ebmn9FFQkJCQkJ",1.5],["7","pqampqampqampqampqampqampqampqampqampn5+fn5+fn5+l6iox87OcHBwcHBwcHCSqanS3Nw6Ojo6Ojo6OoO0tMjMzAQEBAMDAwQEdL+/vb29BAQEAwMKFBR/xsaspqYEBAQEBB1CQp7c3HlgYAQEBAQEHUJCntzceWBgBgYGBQVDoKC/1NQ5EhIGBgYFBUOgoL/U1DkSEgYGCyAgZc3NrpmZJgkJBgYNKSlx3NyohoYgBgYHBxdYWIzc3I1ZWRcHBwgIIYaGqNzccisrDwgICwsomZmv0NBoIiINCAgUFDrU1MSsrEoICAgICBQUOtTUxKysSggICAgI",0.625],["3","FzxrqrfCyMrJvrFxPhYXPGuqt8LIysm+sXE+FlyT2NG8lHd6ocLT3JBUXJPY0byUd3qhwtPckFQqOUs8LRQHE02YwNyRVSo5SzwtFAcTTZjA3JFVBAQEBAwcQWKvzNKRTxoEBAQEDBxBYq/M0pFPGgUFBQUTL2eHvdDUrnhNBQUFBRMvZ4e90NSueE0ICAgHBwYGDzCNv9zQxwgICAcHBgYPMI2/3NDHqcDconQmDg4lisDcz8SpwNyidCYODiWKwNzPxJ242tbLtaiqwNHZ3KV5nbja1su1qKrA0dncpXksVIWosLm/wcG3rHg/ESxUhaiwub/BwbeseD8R",1],["3","BRIiV2+Qo6iojHYzGwgFEiJXb5CjqKiMdjMbCDx5xtfPuqGhu87XzoZNPHnG18+6oaG7ztfOhk1BYYhxVygLEkWQutyaZkFhiHFXKAsSRZC63JpmBAQEBAkTL06dxNGeWiMEBAQECRMvTp3E0Z5aIwUFBQUTLmmJvdDUqnVKBQUFBRMuaYm90NSqdUoRExUQDQgGDiyHudzRyBETFRANCAYOLIe53NHIorzcrX8uEA8rir7czMCivNytfy4QDyuKvtzMwImq09rX0MfI19rb1ZhoiarT2tfQx8jX2tvVmGgaLkdkcoWUmJqDcUUmDhouR2RyhZSYmoNxRSYO",1],["4","n5mSioJ7dG5nX1hTTEWfmZKKgnt0bmdfWFNMRUgbBwMCBz5/uqxPGwEBSBsHAwIHPn+6rE8bAQENBQIEDmG44tJmFwMCAg0FAgQOYbji0mYXAwICCgUHHGLd47lsCwQDAwMKBQccYt3juWwLBAMDAwsLL3Xt6LN7VJBzQhgECwsvde3os3tUkHNCGAQPO5Lp7LJwbKfyy4lIHA87kunssnBsp/LLiUgcFXC+8vLy8vLy8vLmvm8VcL7y8vLy8vLy8ua+bxAsQEk+MTRaofLPfTAHECxAST4xNFqh8s99MAcOCggICAgTRJby1YM0CA4KCAgICBNElvLVgzQI",1.222],["8","o6Kio6OioqKio6Ojo6OjoqKjo6KioqKjo6Sko6Ojo6Oko6Ojo6SkpaWknpGLioiGhIKAfn18eneSfnl7enZwbGhmZWNhXSQFHEZbRx4FAQEBAQEBGyxlZVxuXSQGAQEBAQEQWr2KXJ2nSQsCAgICAhlyx3U9ia1YEAMDBAMEGGrBhFSSp1MQAwQEAwcMMZ/c3M6IKwcFBQUFExNQtbmZsateGAUFBQULGmnHnGGYx4kmBQYFBgUolb1fFkyspzYHBwcHByWNxHc2X6+eMgcHBwcHGm3ax52mv3wjCAgICAgSNHeFeHNoOhMJCQkJCQ0TPmBiVjcVCQkJCQkJ",1.364],["7","t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t4qKioqKioqKprm52+Pje3t7e3t7e3uhurrn8vJAQD8/Pz9AQJDGxtzh4QQEBAMDAwQEgNLS0NDQBAQEAwMKFRWL2tq+trYEBAQEBB9ISK7y8oVqagQEBAQEH0hIrvLyhWpqBgYGBQVJsLDS6ek/FBQGBgYFBUmwsNLp6T8UFAYGDCIib+HhwKmpKQoKBgYOLCx78vK6lJQiBgYHBxlgYJry8ptiYhkHBwgIJJOTufLyfS8vEAgICwsrqKjB5eVyJSUOCAgVFT/p6de9vVAICAgICBUVP+np1729UAgICAgI",0.625],["8","CBlMgbbM1Nza1se5YkUIGUyBtszU3NrWx7liRUdpztLWg2glQZO96Ma7R2nO0taDaCVBk73oxrtig+XWx2ZGAyF7ruHLxGKD5dbHZkYDIXuu4cvELkylye7b1cHJ4+Lick0uTKXJ7tvVwcnj4uJyTRk1iLXj5ebs7fLh0XteGTWItePl5uzt8uHRe16Uqu7UulY0KUy00O3r65Sq7tS6VjQpTLTQ7evrtMPytnsxGAcYSpDX6/K0w/K2ezEYBxhKkNfr8qy979/QeVxAXK7M69rVrL3v39B5XEBcrszr2tU0Tpqwxs7R0c/ItKFMMDROmrDGztHRz8i0oUww",0.889],["2","EBByo7ro6MXFc0oyAQEQEHKjuujoxcVzSjIBAYqKv9nEm5vPz8rIjRgYs7PY68iCgtPT6PKsICDS0szJnUNDnp7W8rM2NvLywahxBARqasXyu0xMtraRf1YEBICAzPK3QkIEBAQEBAQEwMDh8q4lJQQEBAQEBATAwOHyriUlBgYFBSpzc/LyqYVaBQUGBgUFKnNz8vKphVoFBQYGOFF80tK2tlYmGwYGBgZJapfy8qKiOgYGBgY8PIiuvt/fdHQ/JSEZGXFxx/Lmzc1FRURDOysrkZHS8unW1nBwb29hRkby8vLy8vLy8vLy8tSYmPLy8vLy8vLy8vLy1JiY",0.75],["8","CBlMgbbM1Nza1se5YkUIGUyBtszU3NrWx7liRUdpztLWg2glQZO96Ma7R2nO0taDaCVBk73oxrtig+XWx2ZGAyF7ruHLxGKD5dbHZkYDIXuu4cvELkylye7b1cHJ4+Lick0uTKXJ7tvVwcnj4uJyTRk1iLXj5ebs7fLh0XteGTWItePl5uzt8uHRe16Uqu7UulY0KUy00O3r65Sq7tS6VjQpTLTQ7evrtMPytnsxGAcYSpDX6/K0w/K2ezEYBxhKkNfr8qy979/QeVxAXK7M69rVrL3v39B5XEBcrszr2tU0Tpqwxs7R0c/ItKFMMDROmrDGztHRz8i0oUww",0.889],["Q","GnPH3r2Ha5zV46lOCwIac8fevYdrnNXjqU4LAlW9zJhRJB0pdcDUmS4GaNbOgC0DAwNVtOKyOQeA3LpkHQQEBDKe38FYCpfjpUgNBgUED4nb0HYNmuO0aDkwJhIQidvQeA2k5d/Lva6KOxSH29N+DaTl38u9roo7FIfb034NoeTJl4Oh1/CgxejDVwuh5MmXg6HX8KDF6MNXC3/R0pRPOFnK1ObcligIdMvVkz4VL73m8deHGQdEocq7k3iF1Obt4KtZORN3vuPo29vs5urozplqEV2YvMfDw8a8w8rAmm0JDSVHZ3l6VT9McZSbdgkNJUdneXpVP0xxlJt2",1.5],["2","EBByo7ro6MXFc0oyAQEQEHKjuujoxcVzSjIBAYqKv9nEm5vPz8rIjRgYs7PY68iCgtPT6PKsICDS0szJnUNDnp7W8rM2NvLywahxBARqasXyu0xMtraRf1YEBICAzPK3QkIEBAQEBAQEwMDh8q4lJQQEBAQEBATAwOHyriUlBgYFBSpzc/LyqYVaBQUGBgUFKnNz8vKphVoFBQYGOFF80tK2tlYmGwYGBgZJapfy8qKiOgYGBgY8PIiuvt/fdHQ/JSEZGXFxx/Lmzc1FRURDOysrkZHS8unW1nBwb29hRkby8vLy8vLy8vLy8tSYmPLy8vLy8vLy8vLy1JiY",0.75],["8","BCyR2PHt4dLe7PHhqT0SdsLn4rhyYn624OvMcR+v5e7PiCMWNYnR8uOZL9Hy5bRYAwMLZMHy57MyvertyHQRAyaD0PLhjiOM0OvdrWZKcrPf5sFdEFKu4/DpyaPI5u3TlSoEFVqw6vLy8vLy3p8/Chldqdvt59TW5u7r1J5BQ5vY69u3kJCu0unt1IGL3vHir1gTDz6Y2PHu2rvp8sJuIAcIClat5vLwwuryw28fBwcHVq/m8vDA6vLMgjUUDxZou+nw46fl8uzSm1s8abTj8eWkWavY6urez8jS4uXTpDwsaZa0yNPW1tDAq41fFQkcO2GGoqmpmnROLBEJ",0.923],["Q","AQIib8Hu8u3NfCoGAQECJIS/3+HT3uHEjC4FAgtXzerOqpSoy+nSYBIDJrjx01kNAxBWzvC0NAVv6eSMGgUDBhCK5+lvDpry2WMKAwQEBGTc8o8YvvLNRAoHBgQEQ9LyqCLS8ctfPTEdCgQvzvK7KtLy5sW4r5xpIDLQ8rkpzPLt4Nja2bBXS9XysCXA8uO3pL/k8beC3vKfH53y1msaIWLN6+Xv7WsNdN3klzUTMJTi7/HPSwpKve7KbjAqedvy8rxCGhNq2PLq08Xg7/Ly3px4CyhtrdLh5eLSu9/s3tYJEDNjhJielYNulbvIyQkJCg4VGhwaFA4mZYWI",1.308],["2","Ah5CwNvy8vLyzaomFgkRTJbZ4+jf4fLfy3c6Ch956vHr3svQ8vLtx14KbKjy8rAtDB14yfLzkkRomNXPkRgIF13A8vOYUGOJuKxyAwMRQrfy859bBAQEBAQEBCOO0fLzgyoFBQUFBQUfScDh7cVnHAUFBQUFBTpv8vLomEsOBgYFBhY1wOry2rkSEA8GBgYWP4vX7Oqgbw4ODwYGBido4e7v42clCQwPBxUmyuXy5rsxFQcJDRARQX7d7PLOrFhJQkVAPBtu1e/y8racfn19gHNoZ6Xy8vLy8vLy8vLz18FcktXV1dXV1dXV1ta+q1B/ubm5ubm5ubm5uqWV",0.75],["K","e8zc3Ny7GXHK3NzcvB1hvdjcz5sUY8jc2syZF0et09zDeg5UxdzYu3YQAmy+3JgNA6rU3JIxAgMDbL7cmBY1w9i7aRoDAwRsvtyYH2fc3Js/AwMDBG2+3LuJ3NyvOgUFBAQFbb7cy7Pc3I4tBQUFBQVtvtzc3NzcbSAFBQUFBW2+3Myx0NzRVhAGBQYGbb7csmiT3NeHMwYGBgZtvtyZHlfc3LhWBgYGBm6+3JkRB6fT3J5CBwcKdsHcnRwHZsbbu3MeBw5/xNyiKAckuNrYozUHf8zc3Ny8Hz7C3Nzcy3lwtMLCwqYdOKvCwsK0bGGcqKiokBoylKioqJxe",1],["7","1/Dy8vLy8vLy8vLy6HKHlpiYmJiYmKvV8vLnaUJJSkpKSkpRfMby8NpWAwMDAwMDAyBxzvLpriwEBAQDBAQOS6zq8NZcDgQEBAQEBSN0y/HnrTcHBAQEBAQIP5/k8dl9HAQEBQUFBCR70fLorzgHBQUFBQUKTKzm8dJ1HgYFBQUFBR50zPHqtUsOBQUGBgYGRKfk8tqKJQYGBgYGByOD1fHvsz8LBwYHBwcLTKvk8teGJwgHBwcHBxh3ze7vulkVBwcHBwgISrHm8t+KJwkICAgICRuK2O/wtFQWCQgICAkJMJfM1s6HMg4JCAgICQlLjqWpl1MWCQkJCQkJ",1],["A","AQICAQKt0dzPURACAgECAgIFFbzX3NN2FwICAgICAgknzNzc1pseAgICAgMDFnLS3Nzc3DYJAwIDAwMemNbPz9zcUxoDAwQDAyW/2cPD3NxwKgMDBAUZT9zcinmy3K1MBQQFBSpu3Nx0VpLcxF4KBQUFO43c3F0zc9zcbxAFBQZcyNy+a0dk3NyXRgUGGHDS3M2jkaDc3KtgBgYrg9zc3Nzc3Nzcv3sGBmGr2tJ7cnJ2m9DcqB4HfMDVtUg9PUFkxtyyQgeY1NCYFQcHCyy83Lxlmcrc3Nw6FAgVks/c3NyHssLCwjQTCROBtsLCwnWaqKioLhIJEnCeqKio",0.917],["7","1/Dy8vLy8vLy8vLy6HKHlpiYmJiYmKvV8vLnaUJJSkpKSkpRfMby8NpWAwMDAwMDAyBxzvLpriwEBAQDBAQOS6zq8NZcDgQEBAQEBSN0y/HnrTcHBAQEBAQIP5/k8dl9HAQEBQUFBCR70fLorzgHBQUFBQUKTKzm8dJ1HgYFBQUFBR50zPHqtUsOBQUGBgYGRKfk8tqKJQYGBgYGByOD1fHvsz8LBwYHBwcLTKvk8teGJwgHBwcHBxh3ze7vulkVBwcHBwgISrHm8t+KJwkICAgICRuK2O/wtFQWCQgICAkJMJfM1s6HMg4JCAgICQlLjqWpl1MWCQkJCQkJ",1],["A","iCUCAAABDBQRCgIAAQFkEwIBAQ5kj4xjEwEBAUgIAgECHqjc2aInAgEBOgUCAgM61NzcvUQEAgIzBQMDDXnb3NzScgcDAy4EAwQdodzW0tmPEwMDKgQEBTPD28nD3KskAwQkBAQOcNPRhY/c10EEBCMEBSGW2cNVbtHaaQ4FIQUGO7PbsjtWx9yNGAUgBQhgzNmZL0C63LYkBh4GGpbb28q0ttPcy1ULHQcztdzSwbq7ytnUdhIcCk/O27udnJ2s0NuUHBkZgdzUaRUUFDyv27o5Ilm23NJyFQsNRLXb1IUqgc7c1YIYCA1VwdzctTGk2tzcmR4JEG7S3Nzc",1.462],["A","AQICAQKt0dzPURACAgECAgIFFbzX3NN2FwICAgICAgknzNzc1pseAgICAgMDFnLS3Nzc3DYJAwIDAwMemNbPz9zcUxoDAwQDAyW/2cPD3NxwKgMDBAUZT9zcinmy3K1MBQQFBSpu3Nx0VpLcxF4KBQUFO43c3F0zc9zcbxAFBQZcyNy+a0dk3NyXRgUGGHDS3M2jkaDc3KtgBgYrg9zc3Nzc3Nzcv3sGBmGr2tJ7cnJ2m9DcqB4HfMDVtUg9PUFkxtyyQgeY1NCYFQcHCyy83Lxlmcrc3Nw6FAgVks/c3NyHssLCwjQTCROBtsLCwnWaqKioLhIJEnCeqKio",0.917],["2","DSxSn7LDyMjDtqhqOxUNLFKfssPIyMO2qGo7FVKJztPDooSGrMjX3I1OUonO08OihIasyNfcjU5qjbiNaCkLE0yXwNyhcmqNuI1oKQsTTJfA3KFyBAQEBAQECieEuNLTh0oEBAQEBAQKJ4S40tOHSgUFBQUNHmuSzsm5VC0OBQUFBQ0ea5LOyblULQ4GBgYsW6/S2tFyPAoIBgYGBixbr9La0XI8CggGFTdht8vct5Q9HAsHBwcVN2G3y9y3lD0cCwcHB4ys09va1bChkZCPj4Z/jKzT29rVsKGRkI+Phn+crcLCwsLCwsLCwsK1qpytwsLCwsLCwsLCwrWq",1],["2","DSxSn7LDyMjDtqhqOxUNLFKfssPIyMO2qGo7FVKJztPDooSGrMjX3I1OUonO08OihIasyNfcjU5qjbiNaCkLE0yXwNyhcmqNuI1oKQsTTJfA3KFyBAQEBAQECieEuNLTh0oEBAQEBAQKJ4S40tOHSgUFBQUNHmuSzsm5VC0OBQUFBQ0ea5LOyblULQ4GBgYsW6/S2tFyPAoIBgYGBixbr9La0XI8CggGFTdht8vct5Q9HAsHBwcVN2G3y9y3lD0cCwcHB4ys09va1bChkZCPj4Z/jKzT29rVsKGRkI+Phn+crcLCwsLCwsLCwsK1qpytwsLCwsLCwsLCwrWq",1],["6","AQEBAQYRY4m8uapGIwcBAQEBBhFjiby5qkYjBwICAhdCkdXp549ZDAYCAgICF0KR1ennj1kMBgIDDhuHsuvqz28wDwMDAwMOG4ey6+rPbzAPAwMDHFOX4+/y8O3ky7E+IAgcU5fj7/Lw7eTLsT4gCIm06t/NrJuevNvq6JpbibTq382sm5682+romlu30fJ1SA8IBgaEyPHQtrfR8nVIDwgGBoTI8dC2udLynXIxHyVMqdvxwJm50vKdcjEfJUyp2/HAmYqy4/Dy8vLy8vHt1XIjirLj8PLy8vLy8e3VciMSLU6Flaaqp5l5YSMVChItToWVpqqnmXlhIxUK",1],["J","AgICAQE5jIymt7e3t7cCAgIBATmMjKa3t7e3twICAgICJltbrePjzsnJAgICAgIfS0uv8vLWz88DAwMDAxEoKKHy8srAwAQEBAMDAwQEk/LyvrGxBAQEAwMEBAST8vK+sbEEBAQEBAQEBJPy8r6xsQQEBAQEBAQEk/LyvrGxBgYGBQUFBQWT8vK+sbEGBgYFBQUFBZPy8r6xsTMzLx8fFwwMlvLyvrGxQkI9JycdDg6X8vK+sbGampFsbFAnJ6Hy8rWlpfLy5bCwgz8/qvLyrJqa29vWwMCfbGy67++WgICWlqjy8vLy8uvm5lYyMpaWqPLy8vLy6+bmVjIy",0.625],["2","DSxSn7LDyMjDtqhqOxUNLFKfssPIyMO2qGo7FVKJztPDooSGrMjX3I1OUonO08OihIasyNfcjU5qjbiNaCkLE0yXwNyhcmqNuI1oKQsTTJfA3KFyBAQEBAQECieEuNLTh0oEBAQEBAQKJ4S40tOHSgUFBQUNHmuSzsm5VC0OBQUFBQ0ea5LOyblULQ4GBgYsW6/S2tFyPAoIBgYGBixbr9La0XI8CggGFTdht8vct5Q9HAsHBwcVN2G3y9y3lD0cCwcHB4ys09va1bChkZCPj4Z/jKzT29rVsKGRkI+Phn+crcLCwsLCwsLCwsK1qpytwsLCwsLCwsLCwrWq",1],["6","AQEBAQYRY4m8uapGIwcBAQEBBhFjiby5qkYjBwICAhdCkdXp549ZDAYCAgICF0KR1ennj1kMBgIDDhuHsuvqz28wDwMDAwMOG4ey6+rPbzAPAwMDHFOX4+/y8O3ky7E+IAgcU5fj7/Lw7eTLsT4gCIm06t/NrJuevNvq6JpbibTq382sm5682+romlu30fJ1SA8IBgaEyPHQtrfR8nVIDwgGBoTI8dC2udLynXIxHyVMqdvxwJm50vKdcjEfJUyp2/HAmYqy4/Dy8vLy8vHt1XIjirLj8PLy8vLy8e3VciMSLU6Flaaqp5l5YSMVChItToWVpqqnmXlhIxUK",1],["Q","BgMKNXSnsJloORYEAQEGAwo1dKewmWg5FgQBAQg+f6Ofg3WRrap3MgcCCVKmyK53YY/D0JdCCgIfibadZT0ySoCxqm8kAzXAxnMdAwMFPZK+nD8ERMLAaxoIBwU2ibykSAdwx7BWEhYSBiBttrpkDnDHsFYSFhIGIG22umQOeMrY0czJvYZIbbG9bQ54ytjRzMm9hkhtsb1tDmHH0ZpkYoCurLXCqVYIWcbPiEE/bLzNzceiTwY5r82oaT1HlsvUx5lMGxmYzMiQOiFxytzHkUowFXivu5phT4O/yL+gbE8JGViRutXXuJ2NqM/SqgkZWJG61de4nY2oz9Kq",1.5],["J","AgICAQE5jIymt7e3t7cCAgIBATmMjKa3t7e3twICAgICJltbrePjzsnJAgICAgIfS0uv8vLWz88DAwMDAxEoKKHy8srAwAQEBAMDAwQEk/LyvrGxBAQEAwMEBAST8vK+sbEEBAQEBAQEBJPy8r6xsQQEBAQEBAQEk/LyvrGxBgYGBQUFBQWT8vK+sbEGBgYFBQUFBZPy8r6xsTMzLx8fFwwMlvLyvrGxQkI9JycdDg6X8vK+sbGampFsbFAnJ6Hy8rWlpfLy5bCwgz8/qvLyrJqa29vWwMCfbGy67++WgICWlqjy8vLy8uvm5lYyMpaWqPLy8vLy6+bmVjIy",0.625],["2","DSxSn7LDyMjDtqhqOxUNLFKfssPIyMO2qGo7FVKJztPDooSGrMjX3I1OUonO08OihIasyNfcjU5qjbiNaCkLE0yXwNyhcmqNuI1oKQsTTJfA3KFyBAQEBAQECieEuNLTh0oEBAQEBAQKJ4S40tOHSgUFBQUNHmuSzsm5VC0OBQUFBQ0ea5LOyblULQ4GBgYsW6/S2tFyPAoIBgYGBixbr9La0XI8CggGFTdht8vct5Q9HAsHBwcVN2G3y9y3lD0cCwcHB4ys09va1bChkZCPj4Z/jKzT29rVsKGRkI+Phn+crcLCwsLCwsLCwsK1qpytwsLCwsLCwsLCwrWq",1],["6","AQEBAQYRY4m8uapGIwcBAQEBBhFjiby5qkYjBwICAhdCkdXp549ZDAYCAgICF0KR1ennj1kMBgIDDhuHsuvqz28wDwMDAwMOG4ey6+rPbzAPAwMDHFOX4+/y8O3ky7E+IAgcU5fj7/Lw7eTLsT4gCIm06t/NrJuevNvq6JpbibTq382sm5682+romlu30fJ1SA8IBgaEyPHQtrfR8nVIDwgGBoTI8dC2udLynXIxHyVMqdvxwJm50vKdcjEfJUyp2/HAmYqy4/Dy8vLy8vHt1XIjirLj8PLy8vLy8e3VciMSLU6Flaaqp5l5YSMVChItToWVpqqnmXlhIxUK",1],["Q","BgMKNXSnsJloORYEAQEGAwo1dKewmWg5FgQBAQg+f6Ofg3WRrap3MgcCCVKmyK53YY/D0JdCCgIfibadZT0ySoCxqm8kAzXAxnMdAwMFPZK+nD8ERMLAaxoIBwU2ibykSAdwx7BWEhYSBiBttrpkDnDHsFYSFhIGIG22umQOeMrY0czJvYZIbbG9bQ54ytjRzMm9hkhtsb1tDmHH0ZpkYoCurLXCqVYIWcbPiEE/bLzNzceiTwY5r82oaT1HlsvUx5lMGxmYzMiQOiFxytzHkUowFXivu5phT4O/yL+gbE8JGViRutXXuJ2NqM/SqgkZWJG61de4nY2oz9Kq",1.5],["J","AQEBAS+MjLi4ubmcYWEBAQEBL4yMuLi5uZxhYQICAgMgW1vk5NPLnUJCAgIDAxtLS/Pz3NGeNzcDAwMDDycn8/PTwo8pKQMDAwMDAwPz88m0gRoaAwMDAwMDA/PzybSBGxsEBAQEBAQE8/PJtIEcHAQEBAQEBATz88m0gRwcBQUFBQUFBfPzybSCHR0FBQUFBQUF8/PJtIIdHTMzJR8YDAzz88izgh8fQkIwJx8ODvPzyLOCHx+amntsURwc8/PBqHsfH/LyxrCDKSnz87qedB8f2trJwJ9bW/DwqYVjICCTk9Ly8vLy5+d0OjIhIZOT0vLy8vLn53Q6MiEh",0.75],["6","AgIBASBeXre3fF4/AQECAgEBIF5et7d8Xj8BAQICERhTyMjIyFcfFQICAgIWIGTr687OSwoHAgIDA0lsl+7ujIwzBwUDAwQEfLjL8vJLSxsDAwMDHh6OxtXy8nV1RS4gAwNqasXy8vLy8vLFrnUEBGpqxfLy8vLy8sWudQQE4uLPxZlCQouL0PK9U1Pi4s/FmUJCi4vQ8r1TU+7uqodhFRU7O7XyyXl58vKdc08GBiAgrPLOhYXq6rabdCUlV1e+8sVra+PjzsSZRESNjdDyvFFRv7/IzK1wcKamytunPz9UVLXm6vLy8vK2mGgICFRUtebq8vLy8raYaAgI",0.75],["9","CQkJCQkVRX+am4dTGBEJCQkJCyZhkaeomGwuEwcIBwgTadLc3Nzc0IMZBwgHCSSF0LSTlLHOkiUHBwcKPq/NeScnccuoNwYGBgtEt8ZiFBheyKc8BgYGC0m8wlIIDlLFpj8FBQUILZPQqX6Aq8+GJwUFBQcmidO/m53B0n4iBAQEBAYfcLzU29iOJBgEBAQEBRpcpMzayXoeGAIDAwMCAwtHr9WRKAUYAgMDAgIFH2y9umkaBBkCAgICAgg7o9GTLgYCGgEBAQEDGmCmnlIUAwEtAQEBAQQleKh8JwQBATpOTU1NTlVmb2ZVTlBbhmFgYGBgYWFhYWFhY3KZ",1.5],["9","CQkJCQkVRX+am4dTGBEJCQkJCyZhkaeomGwuEwcIBwgTadLc3Nzc0IMZBwgHCSSF0LSTlLHOkiUHBwcKPq/NeScnccuoNwYGBgtEt8ZiFBheyKc8BgYGC0m8wlIIDlLFpj8FBQUILZPQqX6Aq8+GJwUFBQcmidO/m53B0n4iBAQEBAYfcLzU29iOJBgEBAQEBRpcpMzayXoeGAIDAwMCAwtHr9WRKAUYAgMDAgIFH2y9umkaBBkCAgICAgg7o9GTLgYCGgEBAQEDGmCmnlIUAwEuAQEBAQQleKh8JwQBATtOTk5NTlVmb2ZWUFFchmFhYWBgYWJhYWJjZXOZ",1.5],["9","ChUjYXmZp6qmlYVOLRIKFSNheZmnqqaVhU4tEiNy1e3x8vLy8vLw47KKI3LV7fHy8vLy8vDjsoqZwPHbqUwlHzFynfLSuZnA8dupTCUfMXKd8tK5ttDxyIQGBggPSHXy0be20PHIhAYGCA9IdfLRt1ua6OrbvJ6brM3f6rSJW5ro6tu8npuszd/qtIkIID6xy+Tt8PLv45dTHAggPrHL5O3w8u/jl1McAwMDDzBvz+rrsocbDgMDAwMPMG/P6uuyhxsOAwIGDFmP5+nVkUIXAgICAgYMWY/n6dWRQhcCAgIHI0aqubyJYxEGAQEBAQcjRqq5vIljEQYBAQEB",1],["9","ChUjYXmZp6qmlYVOLRIKFSNheZmnqqaVhU4tEiNy1e3x8vLy8vLw47KKI3LV7fHy8vLy8vDjsoqZwPHbqUwlHzFynfLSuZnA8dupTCUfMXKd8tK5ttDxyIQGBggPSHXy0be20PHIhAYGCA9IdfLRt1ua6OrbvJ6brM3f6rSJW5ro6tu8npuszd/qtIkIID6xy+Tt8PLv45dTHAggPrHL5O3w8u/jl1McAwMDDzBvz+rrsocbDgMDAwMPMG/P6uuyhxsOAwIGDFmP5+nVkUIXAgICAgYMWY/n6dWRQhcCAgIHI0aqubyJYxEGAQEBAQcjRqq5vIljEQYBAQEB",1],["9","ChUjYXmZp6qmlYVOLRIKFSNheZmnqqaVhU4tEiNy1e3x8vLy8vLw47KKI3LV7fHy8vLy8vDjsoqZwPHbqUwlHzFynfLSuZnA8dupTCUfMXKd8tK5ttDxyIQGBggPSHXy0be20PHIhAYGCA9IdfLRt1ua6OrbvJ6brM3f6rSJW5ro6tu8npuszd/qtIkIID6xy+Tt8PLv45dTHAggPrHL5O3w8u/jl1McAwMDDzBvz+rrsocbDgMDAwMPMG/P6uuyhxsOAwIGDFmP5+nVkUIXAgICAgYMWY/n6dWRQhcCAgIHI0aqubyJYxEGAQEBAQcjRqq5vIljEQYBAQEB",1],["9","CAhomLby8vLy6ua1VFQICGiYtvLy8vLq5rVUVD8/p9vKpqZwcK3MyL+/UVG88tCNjUREmcTO4+Nra8XyvldXJSV0m7bq6oWFzvKsICAGBk9znfLyeXnJ8rU7OxUVYYeq7u5TU73y0IuLQkKZxc/i4lNTvfLQi4tCQpnFz+LiBAR1rsXy8vLy8vLFamoEBHWuxfLy8vLy8sVqagMDIC5FdXXy8tXGjh4eAwMDAxtLS/Lyy7h8BAQDAwUHM4yM7u6XbEkDAwICBwpLzs7r62QgFgICAgIVH1fIyMjIUxgRAgIBAT9efLe3Xl4gAQECAgEBP158t7deXiABAQIC",0.75]],"digits":[["2","ICBUh4eUlGY3NyAgVIeHlJRmNzfMzKyNjXd3qt3dzMysjY13d6rd3UhIKw0NERFqwsJISCsNDRERasLCBAQFBQVmZo+4uAQEBQUFZmaPuLgFBTRjY9HReiMjBQU0Y2PR0XojI25un9HRIyMUBARubp/R0SMjFAQE8vL4//////////Ly+P////////8=",0.571],["1","HBwceaiooJCQkBwcHHmoqKCQkJBfX1+Hm5ubnJycgYGBjpSUmaKioldXV3F9fYqioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqI=",0.5],["3","QkKHzMzd3aRra0JCh8zM3d2ka2t/f3ZtbWVlhqamnZ1tPT0pKXfExGpqUTg4SEh/trYEBBktLYeHkJqaBAQZLS2Hh5CamgQEGS0tiYmhubkEBBktLYmJobm5VVU9JCQ8PH2+vn19TyAgFRVrwcF6em9kZFxcirm5c3Ov6+vr68moqHNzr+vr6+vJqKg=",0.667],["1","HBwceaiooJCQkBwcHHmoqKCQkJBfX1+Hm5ubnJycgYGBjpSUmaKioldXV3F9fYqioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqI=",0.5],["3","QkKHzMzd3aRra0JCh8zM3d2ka2t/f3ZtbWVlhqamnZ1tPT0pKXfExGpqUTg4SEh/trYEBBktLYeHkJqaBAQZLS2Hh5CamgQEGS0tiYmhubkEBBktLYmJobm5VVU9JCQ8PH2+vn19TyAgFRVrwcF6em9kZFxcirm5c3Ov6+vr68moqHNzr+vr6+vJqKg=",0.667],["1","HBwceaiooJCQkBwcHHmoqKCQkJBfX1+Hm5ubnJycgYGBjpSUmaKioldXV3F9fYqioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqI=",0.5],["8","QkKHzMzY2JlaWkJCh8zM2NiZWlqOjoBxcWNjgqGhtLR8REQpKXfExKKigWFhSEh/trZ+foybm4eHkJqafn6Mm5uHh5Camp6enZ2diYmcsLCenp2dnYmJnLCwt7eASko5OXi2tsPDciAgERFlubmwsIpjY1hYhrOzi4u66urn58eoqIuLuurq5+fHqKg=",0.667],["1","HBwceaiooJCQkBwcHHmoqKCQkJBfX1+Hm5ubnJycgYGBjpSUmaKioldXV3F9fYqioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqI=",0.5],["0","NDSAzMzd3aRrazQ0gMzM3d2ka2uJiYWAgGJihqqqtLSHWlokJHfJybm5gEdHGhpsvb3Dw3IgIAUFVqamw8NyICAFBVampsHBbx0dBARToqLBwW8dHQQEU6Kivr55NDQREWS3t7y8fkBAFxdtwsKamop6el5eibS0VVWh7e3r68KZmVVVoe3t6+vCmZk=",0.667],["1","HBwceaiooJCQkBwcHHmoqKCQkJBfX1+Hm5ubnJycgYGBjpSUmaKioldXV3F9fYqioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqI=",0.5],["6","Kip1wMDd3aRrayoqdcDA3d2ka2uAgH99fWJifZmZq6uDXFwkJGqwsLW1kW5uYGB9mZnJya2SktjYoWtrycmtkpLY2KFra9XVjUVFHh5zyMjV1Y1FRR4ec8jIyMiANzcZGW7Dw8LCeTAwFxdswMCenoZvb15eiLOzVVWh7e3r68KZmVVVoe3t6+vCmZk=",0.667],["8","HByoqOLikZEPDxwcqKji4pGRDw9XV5WVU1OkpDg4dHSLiwsLrq5MTGJinJwtLbKyQUE+Pr29cHC5uSoqPj69vXBwubkqKmBgxMRwcMrKNzdgYMTEcHDKyjc3jIx6eigolpZqaqKiVVUEBHx8g4OFhYWFT0+ammlpTEzl5eTk1dU0NExM5eXk5NXVNDQ=",0.833],["1","HBwceaiooJCQkBwcHHmoqKCQkJBfX1+Hm5ubnJycgYGBjpSUmaKioldXV3F9fYqioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqI=",0.5],["8","QkKHzMzY2JlaWkJCh8zM2NiZWlqOjoBxcWNjgqGhtLR8REQpKXfExKKigWFhSEh/trZ+foybm4eHkJqafn6Mm5uHh5Camp6enZ2diYmcsLCenp2dnYmJnLCwt7eASko5OXi2tsPDciAgERFlubmwsIpjY1hYhrOzi4u66urn58eoqIuLuurq5+fHqKg=",0.667],["1","BAQLEhKSkrLS0h8fSXJywsLS4uJAQJXr6/7++fX1amp3hISMjMH19U1NT1FRfHy59fUICAYEBHl5t/X1BQUEBAR5ebf19QQEBAQEeXm39fUEBAQEBHl5t/X1BAQEBAR5ebf19QQEBAQEeXm39fUEBAQEBHl5t/X1BAQEBAR5ebf19QQEBAQEeXm39fU=",0.444],["8","BSdUxNnVtT4aBCNjmbyvsMGGTxNIrvGyeYHP4ZIldLXNMBgiUuGvS2my0DQWIV3bpEBIq99dKjmTzYkgFmKk2s/P2XxCCiBlotfQ0NaCSxN1utdPLT2F6q5IqL+4JRQcQNG9gb7DrRcLDybJw5eo0dhOJi9s6LxmWprGsJ+ivb2BMhxut////v2aUgk=",0.778],["7","aq/i4uLi4uKval2XwsLCxs7qtWpMeZubm6K0875pDBEVFRU6ltSRKQQEBAQPQLG5dBcEBAQEI2fvikcEBAQEBVyb300gBAQEBg99ssUzEQQEBAowuM15FQQEBAQVdMKzPgwEBAQHH6DCnR4IBAQEHUvvm1gEBAQEBkF+5HU1BAQEBAhdpttWGQQEBAQ=",0.778],["2","ICBuvLzi4rSHhyAgbry84uK0h4dzc3qBgVtbhbCwnZ2AY2MXF27ExGpqV0NDGxtwxMQEBAQEBCQkdMPDBAQEBAQkJHTDwwQEDRYWuLiHVlYEBA0WFri4h1ZWFBRMhIR5eU0gIBwcbLu7WlowBQVHR4zR0YiIa09PnZ3N/f3k5OPi4p2dzf395OTj4uI=",0.667],["8","HByoqOLikZEPDxwcqKji4pGRDw9XV5WVU1OkpDg4dHSLiwsLrq5MTGJinJwtLbKyQUE+Pr29cHC5uSoqPj69vXBwubkqKmBgxMRwcMrKNzdgYMTEcHDKyjc3jIx6eigolpZqaqKiVVUEBHx8g4OFhYWFT0+ammlpTEzl5eTk1dU0NExM5eXk5NXVNDQ=",0.833],["1","HBwceaiooJCQkBwcHHmoqKCQkJBfX1+Hm5ubnJycgYGBjpSUmaKioldXV3F9fYqioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqIEBAQ3UFBroqKiBAQEN1BQa6KiogQEBDdQUGuioqI=",0.5],["8","QkKHzMzY2JlaWkJCh8zM2NiZWlqOjoBxcWNjgqGhtLR8REQpKXfExKKigWFhSEh/trZ+foybm4eHkJqafn6Mm5uHh5Camp6enZ2diYmcsLCenp2dnYmJnLCwt7eASko5OXi2tsPDciAgERFlubmwsIpjY1hYhrOzi4u66urn58eoqIuLuurq5+fHqKg=",0.667]]});
+
+/* Lectura en vivo: mira la ventana compartida, y sólo carga lo que lee con seguridad.
+   Ante la duda no inventa: avisa y deja la carga manual. */
+const BMLive=(()=>{
+ 'use strict';
+ const MIN_SCORE=0.70,MIN_MARGIN=0.15,EVERY_MS=400;
+ const el=id=>document.getElementById(id);
+ let stream=null,video=null,canvas=null,timer=null,last='',stable=0,misses=0,loaded=false,status={kind:'idle',text:''};
+ function setStatus(kind,text){status={kind,text};const s=el('bmmPcLiveStatus');if(s){s.textContent=text;s.dataset.kind=kind;}}
+ const sure=c=>!!c&&!!c.label&&c.score>=MIN_SCORE&&c.margin>=MIN_MARGIN;
+ function judge(r){
+  const doubt=[];
+  if(r.checks.includes('geometria'))doubt.push('hay una carta tapada o cortada');
+  r.player.forEach((c,i)=>{if(!sure(c))doubt.push('tu carta '+(i+1));});
+  if(!r.dealer.length)doubt.push('no veo la carta del crupier');
+  else if(!sure(r.dealer[0]))doubt.push('la carta del crupier');
+  const me=r.player.map(c=>c.label),dealer=r.dealer.length&&sure(r.dealer[0])?[r.dealer[0].label]:[];
+  if(!doubt.length&&r.total!=null){const t=BJ.score(me).total;if(t!==r.total)doubt.push('leí '+me.join(' + ')+' pero la mesa dice '+r.total);}
+  return {me,dealer,doubt,checked:r.total!=null};
+ }
+ function apply(me,dealer,checked){
+  const out=window.BMApp.liveApply(me,dealer);
+  if(out.status==='no-cards'){setStatus('doubt','Dudosa: no quedan cartas '+out.rank+' en el zapato registrado.');return;}
+  if(out.status==='busy')return;
+  if(out.status==='loaded')loaded=true;
+  setStatus('ok','Leído: '+me.join(' + ')+' contra '+dealer.join(' + ')+(checked?' · total verificado':''));
+ }
+ function feedResult(r){
+  if(!r.ok){
+   stable=0;last='';misses++;
+   if(misses>=4&&loaded&&window.BMApp.hasHand()){loaded=false;window.BMApp.nextHand();setStatus('wait','Mano terminada. Esperando la próxima…');}
+   else if(misses>=2&&status.kind!=='wait')setStatus('wait','Esperando cartas en la mesa…');
+   return status;
+  }
+  misses=0;
+  if(r.dealer.length>1){stable=0;last='';setStatus('wait','El crupier está jugando su mano.');return status;}
+  const j=judge(r),sig=JSON.stringify([j.me,j.dealer,j.doubt]);
+  if(sig===last)stable++;else{last=sig;stable=1;}
+  if(stable<2)return status;
+  if(j.doubt.length){setStatus('doubt','Dudosa: '+j.doubt[0]+'. Cargala a mano.');return status;}
+  apply(j.me,j.dealer,j.checked);
+  return status;
+ }
+ function feedImage(img){return feedResult(BMV.read(img));}
+ function tick(){
+  if(!video||!video.videoWidth)return;
+  canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(video,0,0);
+  try{feedImage(ctx.getImageData(0,0,canvas.width,canvas.height));}catch(e){setStatus('doubt','No pude leer la imagen compartida.');}
+ }
+ function paintButton(){const b=el('bmmPcLive');if(b){b.textContent=stream?'■ Dejar de leer':'📡 Leer mesa';b.setAttribute('aria-pressed',stream?'true':'false');}}
+ function stop(){
+  if(timer)clearInterval(timer);timer=null;
+  if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;video=null;
+  last='';stable=0;misses=0;paintButton();setStatus('idle','');
+ }
+ async function start(){
+  if(stream)return;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia){setStatus('doubt','Este navegador no permite compartir la pantalla.');return;}
+  try{stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:4,max:8}},audio:false});}
+  catch(e){stream=null;setStatus('idle','No se compartió ninguna ventana.');return;}
+  video=document.createElement('video');video.muted=true;video.playsInline=true;video.srcObject=stream;
+  canvas=canvas||document.createElement('canvas');
+  stream.getVideoTracks()[0].addEventListener('ended',stop);
+  try{await video.play();}catch(e){}
+  last='';stable=0;misses=0;loaded=false;timer=setInterval(tick,EVERY_MS);paintButton();setStatus('wait','Buscando la mesa en la ventana compartida…');
+ }
+ function reset(){last='';stable=0;misses=0;loaded=false;setStatus('idle','');}
+ const btn=el('bmmPcLive');if(btn)btn.addEventListener('click',()=>{stream?stop():start();});
+ return {start,stop,reset,feedImage,feedResult,judge,get status(){return status;},get active(){return !!stream;}};
 })();
 </script>
 </body></html>

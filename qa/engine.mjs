@@ -70,5 +70,27 @@ check('sin peek: 6+5 vs 10 → hit', best(BJX.analyze(data(['6', '5'], ['10'])))
   check('peor caso en menos de 1,5 s', ms < 1500, `${ms} ms`);
 }
 
+// 8. Reglas de «Blackjack Ilimitado»: peek sólo con As y seis cartas ganan.
+{
+  const U = { ...S, decks: 8, peekAceOnly: true, charlie6: true, doubleAfterSplit: false };
+  const same = (a, b) => ['stand', 'hit', 'double'].every((k) => !a[k] === !b[k] && (!a[k] || Math.abs(a[k].ev - b[k].ev) < 1e-12));
+  const noCharlie = { ...U, charlie6: false };
+  check('peek sólo con As: contra As equivale a peek', same(BJX.analyze(data(['10', '6'], ['A'], noCharlie)), BJX.analyze(data(['10', '6'], ['A'], { ...noCharlie, peekAceOnly: false, peekNoBJ: true }))));
+  check('peek sólo con As: contra 10 equivale a sin peek', same(BJX.analyze(data(['10', '6'], ['K'], noCharlie)), BJX.analyze(data(['10', '6'], ['K'], { ...noCharlie, peekAceOnly: false }))));
+  // Cinco cartas que suman 12 contra 7: pedir gana si no te pasás (sexta carta), pierde si te pasás.
+  const me = ['2', '2', '2', '3', '3'], x = BJX.analyze(data(me, ['7'], U));
+  const left = 8 * 52 - 6, tens = 8 * 16, expected = (left - tens) / left - tens / left;
+  check('seis cartas: pedir con cinco cartas vale P(no pasarse) − P(pasarse)', Math.abs(x.hit.ev - expected) < 1e-9, `${x.hit.ev} vs ${expected}`);
+  check('seis cartas: con 12 y cinco cartas contra 7 conviene pedir', best(x) === 'hit');
+  check('seis cartas: la guía marca «gana» para las que no se pasan', x.next.filter(Boolean).every((n) => n.act === (n.total > 21 ? 'bust' : 'win')));
+  const six = BJX.analyze(data(['2', '2', '2', '3', '3', '4'], ['7'], U));
+  check('seis cartas ya en mano: victoria segura y sin más acciones', six.stand.ev === 1 && !six.hit && !six.double);
+  const off = BJX.analyze(data(me, ['7'], noCharlie));
+  check('sin la regla, el mismo caso vale menos', off.hit.ev < x.hit.ev - 0.05);
+  // 16 duro de cinco cartas contra 10: la regla vuelve mejor pedir
+  const h16 = ['2', '3', '3', '4', '4'];
+  check('seis cartas: 16 de cinco cartas contra 10 → pedir', best(BJX.analyze(data(h16, ['10'], U))) === 'hit');
+}
+
 console.log(failures.length ? `\nMOTOR FALLA (${failures.length})` : '\nMOTOR OK');
 process.exit(failures.length ? 1 : 0);

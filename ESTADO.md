@@ -20,6 +20,12 @@ Actualizado: 2026-11-08
 - Teclado en modo PC: Espacio = nueva mano, Retroceso/Supr = borrar la última carta (pedidas → tu 2ª → crupier → tu 1ª). Espacio ya no activa el botón con foco; Enter sí.
 - En el tablero cambió el color del texto de la jugada para coincidir: pedir en rojo, dividir en azul.
 - `qa/pc-mode.mjs` suma 13 chequeos para todo esto (683 × 768 y 500 × 700 sin scroll).
+- **Mesa real identificada (12/11): «Blackjack Ilimitado en Vivo» de Betano.** Reglas leídas de su ayuda: 8 mazos, crupier se planta en 17 blando, revisa blackjack sólo con As, seis cartas ganan («Charlie», incluso contra blackjack), ases divididos reciben una carta, no se puede pedir con 17 duro o más, existe «Cobrar» (no modelado). Doblar tras dividir: la ayuda no lo aclara; el preset lo deja apagado.
+- Ajustes: opciones nuevas «Crupier revisa blackjack sólo con As» y «Seis cartas gana», y botón «Usar reglas de Blackjack Ilimitado» (completa el formulario; hay que guardar). El motor exacto `BJX` contempla ambas reglas.
+- **Lector nuevo `BMV`** (no reemplaza al OCR viejo, que sigue igual): busca el globo amarillo/rojo con tu total, a su derecha el bloque de tus cartas (apiladas en diagonal) y arriba a la izquierda las del crupier; lee cada valor con plantillas hechas de capturas reales y lee el total del globo para verificar. Funciona a distintas escalas (cartas de 30 y 44 px).
+- **Lectura en vivo `BMLive`** (botón «📡 Leer mesa» en modo PC): compartís la ventana de Betano y cada 0,4 s lee la mesa. Carga cartas sólo si dos cuadros seguidos coinciden, todas las cartas superan el umbral y la suma coincide con el globo (cuando el globo se pudo leer). Si no, muestra «Dudosa» y no toca nada. Cuatro cuadros sin mesa cierran la mano.
+- Límites conocidos del lector: plantillas hechas con 18 capturas (pocas manos distintas); el «9» es provisional (un 6 girado) y hay un solo ejemplo de 4, 5 y 10; del globo faltan los dígitos 4, 5 y 9 (esos totales quedan sin verificar); totales blandos «8/18» no se verifican; manos divididas no se leen; las cartas que saca el crupier al final no se cargan al conteo. **La captura de pantalla real (`getDisplayMedia`) no se pudo probar sin navegador con pantalla.**
+- Pruebas: `node qa/vision.mjs` (recortes en `qa/fixtures/ilimitado/`: sólo globo y cartas sobre fondo liso, sin datos personales) y casos nuevos en `qa/engine.mjs`.
 - Falta: publicar (mergear a `main`) y verificar en vivo.
 
 ## Abierto

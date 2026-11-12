@@ -1,0 +1,245 @@
+[
+ {
+  "file": "ilimitado-01.png",
+  "estado": "decidir",
+  "jugador": [
+   "3",
+   "K"
+  ],
+  "crupier": [
+   "K"
+  ],
+  "total": 13,
+  "escala": 30,
+  "tapada": false,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-02.png",
+  "estado": "cerrada",
+  "jugador": [
+   "3",
+   "K",
+   null
+  ],
+  "crupier": [
+   "K"
+  ],
+  "total": 18,
+  "escala": 30,
+  "tapada": true,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-03.png",
+  "estado": "decidir",
+  "jugador": [
+   "3",
+   "K",
+   null
+  ],
+  "crupier": [
+   "K",
+   "5"
+  ],
+  "total": 18,
+  "escala": 30,
+  "tapada": true,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-04.png",
+  "estado": "decidir",
+  "jugador": [
+   "Q"
+  ],
+  "crupier": [
+   "7"
+  ],
+  "total": 10,
+  "escala": 30,
+  "tapada": false,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-05.png",
+  "estado": "decidir",
+  "jugador": [
+   "Q",
+   "6"
+  ],
+  "crupier": [
+   "7"
+  ],
+  "total": 16,
+  "escala": 30,
+  "tapada": false,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-06.png",
+  "estado": "cerrada",
+  "jugador": [
+   "Q",
+   "6"
+  ],
+  "crupier": [
+   "7"
+  ],
+  "total": 16,
+  "escala": 30,
+  "tapada": false,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-07.png",
+  "estado": "cerrada",
+  "jugador": [
+   "3",
+   "3",
+   "4",
+   "8"
+  ],
+  "crupier": [
+   "7"
+  ],
+  "total": 18,
+  "escala": 30,
+  "tapada": false,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-08.png",
+  "estado": "decidir",
+  "jugador": [
+   "8"
+  ],
+  "crupier": [
+   "2"
+  ],
+  "total": 8,
+  "escala": 30,
+  "tapada": false,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-09.png",
+  "estado": "decidir",
+  "jugador": [
+   "8",
+   "Q"
+  ],
+  "crupier": [
+   "2"
+  ],
+  "total": 18,
+  "escala": 30,
+  "tapada": false,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-10.png",
+  "estado": "decidir",
+  "jugador": [
+   "8",
+   "Q"
+  ],
+  "crupier": [
+   "2",
+   "K"
+  ],
+  "total": 18,
+  "escala": 44,
+  "tapada": false,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-11.png",
+  "estado": "decidir",
+  "jugador": [
+   "7"
+  ],
+  "crupier": [
+   "A"
+  ],
+  "total": 7,
+  "escala": 44,
+  "tapada": false,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-12.png",
+  "estado": "decidir",
+  "jugador": [
+   "7",
+   "A"
+  ],
+  "crupier": [
+   "A"
+  ],
+  "total": 18,
+  "escala": 44,
+  "tapada": false,
+  "totalBlando": "8/18"
+ },
+ {
+  "file": "ilimitado-13.png",
+  "estado": "decidir",
+  "jugador": [
+   "2"
+  ],
+  "crupier": null,
+  "total": 2,
+  "escala": 30,
+  "tapada": false,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-14.png",
+  "estado": "decidir",
+  "jugador": [
+   "2",
+   "6"
+  ],
+  "crupier": [
+   "J"
+  ],
+  "total": 8,
+  "escala": 30,
+  "tapada": false,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-15.png",
+  "estado": "cerrada",
+  "jugador": [
+   "2",
+   "6",
+   "Q"
+  ],
+  "crupier": [
+   "J"
+  ],
+  "total": 18,
+  "escala": 30,
+  "tapada": false,
+  "totalBlando": null
+ },
+ {
+  "file": "ilimitado-16.png",
+  "estado": "decidir",
+  "jugador": [
+   "2",
+   "6",
+   "Q"
+  ],
+  "crupier": [
+   "J",
+   "6"
+  ],
+  "total": 18,
+  "escala": 30,
+  "tapada": false,
+  "totalBlando": null
+ }
+]
